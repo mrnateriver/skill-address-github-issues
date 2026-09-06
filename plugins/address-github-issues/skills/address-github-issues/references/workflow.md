@@ -1,6 +1,6 @@
 # GitHub issue workflow
 
-The invoking root agent owns scope resolution, preflight, and raw inventory; it then spawns one `gpt-6-astra-xhigh` subagent for all technical triage. Using only that triage report, it spawns one fresh `gpt-6-astra-low` coordinator for each individual issue or Astra-approved grouped effort. An effort coordinator owns only that one effort.
+The invoking root agent owns scope resolution, preflight, and raw inventory. During preflight it delegates artifact verification discovery to `gpt-6-astra-xhigh`; after inventory it spawns one `gpt-6-astra-xhigh` subagent for all technical triage. Using only that triage report, it spawns one fresh `gpt-6-astra-low` coordinator for each individual issue or Astra-approved grouped effort. An effort coordinator owns only that one effort.
 
 ## Non-negotiable role boundaries
 
@@ -14,13 +14,15 @@ The coordinator must not:
 - choose an algorithm, protocol, library, architecture, implementation approach, or fix;
 - plan or edit implementation files.
 
-Delegate every triage or debugging judgment to `gpt-6-astra-xhigh` (`model=gpt-6-astra`, `reasoning_effort=xhigh`). Delegate every implementation or corrective edit to `gpt-6-astra-low` (`model=gpt-6-astra`, `reasoning_effort=low`). The coordinator relays evidence and executes the resulting decision-complete reports.
+Delegate every triage or debugging judgment to `gpt-6-astra-xhigh` (`model=<selected-model>`, `reasoning_effort=xhigh`). Delegate every implementation or corrective edit to `gpt-6-astra-low` (`model=<selected-model>`, `reasoning_effort=low`). The coordinator relays evidence and executes the resulting decision-complete reports.
 
-Do not silently substitute models or reasoning efforts. Model unavailability blocks the run.
+Determining or revising verification steps and performing technical manual reviews are also Astra-xhigh work. The root and coordinators relay the verification report and run prescribed checks; they must not independently choose or waive verification requirements.
+
+Apply [Subagent model selection](../SKILL.md#subagent-model-selection) to every spawn and propagate it recursively. All Astra role names in this workflow use the selected available model with the stated reasoning effort. A model being unavailable requires trying the next model in the ordered list; only exhaustion of that list blocks the run for model availability. Report every fallback.
 
 ## Execution mode inheritance and thread exhaustion
 
-When the invoking root explicitly requests **FAST MODE subagents**, fast mode is mandatory for every subagent spawned anywhere in the run. The root must apply it to triage and effort coordinators; each coordinator and descendant must state and propagate it in every child task. Exact model and reasoning-effort requirements still apply. Never spawn a normal-mode fallback. If the harness cannot honor fast mode for a required delegate, stop before that delegate's work and report the run as blocked.
+When the invoking root explicitly requests **FAST MODE subagents**, fast mode is mandatory for every subagent spawned anywhere in the run. The root must apply it to preflight, triage, and effort coordinators; each coordinator and descendant must state and propagate it in every child task. The model selection policy and exact reasoning-effort requirements still apply. Never spawn a normal-mode fallback. If no model in the fallback list can honor fast mode for a required delegate, stop before that delegate's work and report the run as blocked.
 
 If any agent receives a subagent-thread-limit error or otherwise cannot spawn a required delegate because the harness's thread capacity is exhausted, it must stop immediately. It must not diagnose, plan, implement, validate, publish, merge, reuse a previous delegate, or wait for capacity to recover.
 
@@ -56,13 +58,18 @@ Before fetching issue details:
 3. Verify GitHub authentication and read access to the repository.
 4. Inspect local `main`. If it is dirty, ahead of `origin/main`, diverged, or unavailable for a safe fast-forward, stop and report the exact state. Never stash, reset, discard, or overwrite user work.
 5. Fetch `origin/main`, fast-forward local `main` with `--ff-only`, and verify local `main` equals `origin/main`.
-6. Confirm the required coordinator, Astra-xhigh, and Astra-low model configurations are available before starting the issue inventory.
+6. Resolve an available model for the required `xhigh` and `low` role configurations using the subagent model selection policy before starting the issue inventory. Record any fallbacks and propagate the policy to every delegate.
+7. Spawn a dedicated `gpt-6-astra-xhigh` preflight subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the repository path, repository instructions, and this workflow to determine the necessary artifact verification steps. Wait for its report before fetching issue details.
+
+The preflight subagent inspects repository instructions, CI configuration, manifests, existing scripts, documentation, and artifact types. Its verification report must identify applicable automated checks or explicit manual review procedures, working directories, prerequisites, execution stage (local or CI), and success criteria, with supporting repository evidence. Distinguish clean-baseline checks from final artifact verification and identify required CI checks. Derive verification from the target repository; do not assume a particular language, build system, or test framework.
+
+When verification procedures are undocumented, derive suitable checks from the artifacts and existing tooling, including manual review where appropriate. Missing automated tests alone do not block the run. If meaningful verification cannot be established or required tooling or other prerequisites are unavailable, report the blocker before issue processing; do not invent commands or treat unperformed checks as passing. Carry this report through the existing delegate-report flow.
 
 The root agent repeats the safe fetch and fast-forward before it spawns each later effort coordinator because the previous effort's rebase merge changes `main`.
 
 ## 3. Root agent: fetch the issue inventory
 
-Fetch only after `main` is current.
+Fetch only after `main` is current and the preflight verification report is available with no unresolved preflight blockers.
 
 ### All-open mode
 
@@ -79,11 +86,12 @@ Fetch only after `main` is current.
 
 ## 4. Root agent: mandatory Astra-xhigh triage
 
-Spawn one `gpt-6-astra-xhigh` triage subagent (`model=gpt-6-astra`, `reasoning_effort=xhigh`) with the raw inventory, repository instructions, and repository path. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
+Spawn one `gpt-6-astra-xhigh` triage subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the raw inventory, preflight verification report, repository instructions, and repository path. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
 
 The triage report must be detailed and decision-complete. It must contain:
 
 - each issue's scope and acceptance criteria;
+- applicable baseline and final verification steps for each effort, derived from the preflight verification report;
 - explicit blockers and dependencies cited by issue data;
 - technical prerequisites inferred from the codebase, protocols, migrations, or rollout order, with evidence;
 - likely shared root causes and overlapping implementation surfaces;
@@ -117,11 +125,11 @@ Group issues only when the Astra-xhigh triage report establishes all of the foll
 - the combined change can close every member without partial delivery;
 - grouping does not hide unrelated refactoring or broaden scope.
 
-Shared labels, the same crate, nearby files, or potential merge conflicts are not sufficient reasons to group. When uncertain, keep issues separate. In single-issue mode, grouping is forbidden.
+Shared labels, the same component, nearby files, or potential merge conflicts are not sufficient reasons to group. When uncertain, keep issues separate. In single-issue mode, grouping is forbidden.
 
 ## 5. Root agent: process each effort sequentially
 
-For each effort selected, grouped, and ordered by the Astra-xhigh triage report, the root agent spawns a **new** `gpt-6-astra-low` coordinator (`model=gpt-6-astra`, `reasoning_effort=low`) with the repository path, raw inventory, current raw member-issue data, triage report, repository instructions, this workflow, and the effort definition. The fresh coordinator completes every subsection below and returns an effort report. The root agent does not reuse that coordinator for another effort and does not make technical decisions between efforts.
+For each effort selected, grouped, and ordered by the Astra-xhigh triage report, the root agent spawns a **new** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`) with the repository path, raw inventory, current raw member-issue data, triage report, latest verification report, repository instructions, this workflow, and the effort definition. The fresh coordinator completes every subsection below and returns an effort report. The root agent does not reuse that coordinator for another effort and does not make technical decisions between efforts.
 
 ### 5.1 Refresh eligibility
 
@@ -130,6 +138,7 @@ For each effort selected, grouped, and ordered by the Astra-xhigh triage report,
 3. Skip and report members already closed by other work.
 4. If issue data or dependency state changed materially, send the new raw evidence back to `gpt-6-astra-xhigh` for revised triage. The coordinator must not revise the ordering or group itself.
 5. Do not start an effort that the latest Astra-xhigh report marks blocked.
+6. If repository instructions, verification configuration, or affected artifact types have changed since verification discovery, obtain an updated report from `gpt-6-astra-xhigh` before baseline validation.
 
 ### 5.2 Create the branch and worktree
 
@@ -137,7 +146,7 @@ For each effort selected, grouped, and ordered by the Astra-xhigh triage report,
 2. Use `issue-<number>-<short-slug>` for one issue and `issues-<lowest-number>-<next-number>-<short-slug>` for a group.
 3. Create a dedicated Git worktree for that branch. Prefer a repository-native worktree mechanism when available; otherwise use an existing ignored `.worktrees/` directory or a safe external sibling directory.
 4. Verify a project-local worktree directory is ignored before using it. Do not add worktree contents to version control.
-5. Run the repository-prescribed clean baseline in the worktree before implementation.
+5. Run the applicable clean-baseline checks from the verification and triage reports in the worktree before implementation, including every repository-required baseline check. Delegate any prescribed technical manual review to `gpt-6-astra-xhigh`.
 
 If baseline validation fails, capture exact commands and complete output and delegate diagnosis to `gpt-6-astra-xhigh`. Do not let the coordinator diagnose or waive a red baseline. Proceed only if Astra-xhigh proves the failure is unrelated and the governing repository instructions permit proceeding; otherwise report the effort blocked.
 
@@ -161,15 +170,16 @@ Spawn a fresh `gpt-6-astra-xhigh` planning subagent. Give it:
 
 - the complete current issue or grouped-issue data;
 - the triage report;
+- the latest verification report;
 - every research and debugging report;
 - current repository instructions and architecture documents;
 - the clean-baseline result.
 
-Require a decision-complete plan covering scope, code or documentation changes, interfaces, edge cases, migration or compatibility needs, tests, acceptance criteria, and validation. The plan must identify how one grouped change satisfies each member issue separately. The coordinator may request clarification but must not invent missing technical decisions.
+Require a decision-complete plan covering scope, code or documentation changes, interfaces, edge cases, migration or compatibility needs, tests, acceptance criteria, and validation. The planner refines the verification report for the effort's artifacts and acceptance criteria, adding effort-specific checks and updating procedures when requirements change. The plan must identify how one grouped change satisfies each member issue separately. The coordinator may request clarification but must not invent missing technical decisions.
 
 ### 5.6 Implement in the worktree
 
-Spawn a `gpt-6-astra-low` implementation subagent (`model=gpt-6-astra`, `reasoning_effort=low`) in the effort's worktree. Give it the approved plan and all supporting reports. Require it to:
+Spawn a `gpt-6-astra-low` implementation subagent (`model=<selected-model>`, `reasoning_effort=low`) in the effort's worktree. Give it the approved plan and all supporting reports. Require it to:
 
 - read and obey repository and relevant skill instructions;
 - edit only within the approved scope;
@@ -183,9 +193,9 @@ The coordinator must not edit implementation files. If implementation reveals a 
 ### 5.7 Review and validate
 
 1. Collect the diff and implementation report.
-2. Give them to a `gpt-6-astra-xhigh` verification subagent to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests.
+2. Give them and the latest verification report to a `gpt-6-astra-xhigh` verification subagent to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
 3. Delegate any required edit to `gpt-6-astra-low`.
-4. Run all focused tests and every validation command required by `AGENTS.md`. In this repository that includes `cargo fmt`, `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
+4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. Run CI-only checks through the pull-request workflow in section 5.9; their results gate merging.
 5. Confirm only intended files changed and run `git diff --check`.
 
 Any unexpected result goes first to a `gpt-6-astra-xhigh` debugging subagent with raw evidence. Only after diagnosis may a `gpt-6-astra-low` subagent implement the prescribed fix. The coordinator never diagnoses the failure itself.
@@ -196,7 +206,7 @@ Allow at most five diagnose-fix-verify cycles for one effort across local valida
 
 1. Commit all validated changes with an imperative, non-Conventional-Commit message that follows repository conventions.
 2. Fetch `origin/main` again and rebase the issue branch onto it.
-3. If the rebase changes the resulting tree, rerun required validation.
+3. If the rebase changes the resulting tree, rerun applicable verification steps from the latest report. Have Astra-xhigh revise the report first if the rebase changes verification requirements.
 4. Treat non-trivial rebase conflicts as debugging: Astra-xhigh diagnoses the correct resolution and Astra-low applies it.
 5. Push the branch. After a post-push rebase, use only `--force-with-lease`, never an unconditional force push.
 6. Create a pull request only after implementation and local validation are complete.
@@ -220,10 +230,10 @@ The coordinator reports after each merged effort:
 
 - issue numbers and titles;
 - whether issues were grouped and the Astra-xhigh justification;
-- research, triage, debugging, planning, implementation, and verification delegates used;
+- research, triage, debugging, planning, implementation, and verification delegates used, with actual models, reasoning efforts, and fallback reasons;
 - branch and worktree path;
 - changed behavior or documentation;
-- local validation and CI results;
+- the latest verification report, including refinements, and results of automated checks, manual reviews, and required CI checks;
 - pull request URL and merge commit;
 - confirmed final issue states;
 - any deferred or newly discovered work.

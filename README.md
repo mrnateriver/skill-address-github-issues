@@ -53,20 +53,28 @@ dependencies are inspected but remain outside implementation scope.
 - Git, authenticated GitHub access (for example, GitHub CLI via `gh auth login`),
   and permission to push branches, create pull requests, rebase-merge them, and
   close issues in the target repository.
-- A Codex harness that supports `gpt-6-astra` subagents with `xhigh` and `low`
-  reasoning effort. The skill requires these exact configurations and stops
-  when they are unavailable.
+- A Codex harness supporting subagents with the required `xhigh` and `low`
+  reasoning efforts. Model selection follows this order: `gpt-6-astra` →
+  `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`. If a model is unavailable, every
+  agent must use the next available model that supports the role's reasoning
+  effort and any requested fast mode. Model availability blocks the run only
+  when the list is exhausted. Delegates propagate this policy and report the
+  actual models used and any fallbacks.
 - A target repository with an `origin` remote and a clean local `main` that can
   be safely fast-forwarded to `origin/main`. Required checks and branch
   protections must permit rebase merging.
-- The existing workflow explicitly requires `cargo fmt`,
-  `cargo check --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings`.
-  It therefore assumes a Rust workspace with Cargo, rustfmt, and Clippy, in
-  addition to the target repository's own validation requirements.
+- The tools and environment needed to verify the target repository's artifacts.
+  Before issue inventory and processing, an Astra-xhigh preflight delegate
+  determines verification steps from repository instructions, CI, manifests,
+  scripts, documentation, and artifact types. Its report guides baseline checks
+  and final verification, with effort-specific refinements during planning.
+  Checks may be automated or explicit manual reviews. Missing automated tests
+  alone are not a blocker, but unavailable required checks or an inability to
+  establish meaningful verification must be reported.
 
-The plugin preserves the original [skill](plugins/address-github-issues/skills/address-github-issues/SKILL.md)
-and [workflow](plugins/address-github-issues/skills/address-github-issues/references/workflow.md),
-including sequential issue processing, required delegation, and bounded retries.
+The [skill](plugins/address-github-issues/skills/address-github-issues/SKILL.md)
+and [workflow](plugins/address-github-issues/skills/address-github-issues/references/workflow.md)
+define sequential issue processing, required delegation, and bounded retries.
 
 The skill's core workflow is broadly reusable across AI agents that support
 subagent delegation. Its current instructions explicitly reference OpenAI models
