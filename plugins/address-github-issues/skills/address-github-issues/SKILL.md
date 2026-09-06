@@ -1,6 +1,6 @@
 ---
 name: address-github-issues
-description: Inventory, triage, order, group, and fully resolve a repository's GitHub issues through isolated worktrees and rebase-merged pull requests. Use when asked to address all open issues or one specified issue; do not use for issue summaries or metadata-only edits.
+description: Inventory, triage, order, group, and implement a repository's GitHub issues, with optional uncommitted or local-commit delivery instead of isolated worktrees and rebase-merged pull requests. Use when asked to address all open issues or one specified issue; do not use for issue summaries or metadata-only edits.
 ---
 
 # Address GitHub Issues
@@ -9,9 +9,19 @@ The invoking root agent first obtains repository-specific artifact verification 
 
 ## Invocation modes
 
-- No argument: process a snapshot of every open issue in the current repository.
+`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]`
+
+- No issue argument: process a snapshot of every open issue in the current repository, including when only flags are supplied.
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
-- More than one explicit issue argument is invalid. Use the no-argument mode for repository-wide processing.
+- Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
+
+| Delivery mode | Workspace | Commits | GitHub writes |
+|---|---|---|---|
+| Default (no flags) | Fresh branch and worktree per effort | Yes | Push, PR, required checks, rebase-merge, issue closure |
+| `--no-pr` | Current worktree and branch for every effort | One per validated issue or approved group | None |
+| `--no-commit` | Current worktree for every effort | None; accumulate all changes in one changeset | None |
+
+`--no-commit` implies `--no-pr`; if both appear, use uncommitted mode. Resolve the delivery mode before preflight and pass it to every descendant. Both reduced modes preserve the current branch and worktree, including earlier efforts and pre-existing edits, without creating or switching branches/worktrees or synchronizing with `main`. Do not include unrelated pre-existing changes in commits. Uncommitted mode also forbids temporary commits and stashes. Reduced modes never push, create PRs, merge, or close issues.
 
 ## Subagent model selection
 
@@ -27,12 +37,12 @@ Throughout this skill and its workflow, `gpt-6-astra-xhigh`/Astra-xhigh and `gpt
 
 During the preflight in [references/workflow.md](references/workflow.md), the root agent spawns a dedicated `gpt-6-astra-xhigh` subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) to determine the necessary artifact verification steps from the target repository's instructions, tooling, CI, and artifact types. It waits for that verification report before fetching the raw issue inventory, then spawns exactly one `gpt-6-astra-xhigh` triage subagent with the complete raw inventory and verification report. It uses only the triage subagent's decision-complete report to select, group, order, and spawn effort coordinators; it must not pre-classify issues, make triage decisions, or fill gaps in either report.
 
-For every dependency-ready individual issue or deliberately approved grouped effort, the root agent spawns exactly one **fresh** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`). It passes the coordinator the repository path, current raw issue data, the applicable triage and verification reports, this skill, and [references/workflow.md](references/workflow.md), and requires it to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
+For every dependency-ready individual issue or deliberately approved grouped effort, the root agent spawns exactly one **fresh** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`). It passes the coordinator the repository path, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the invoking worktree, starting branch/commit and pre-existing changes, and accumulated local progress. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
 
 Each effort coordinator owns that effort from its eligibility refresh through its report, but it is orchestration-only:
 
 - `gpt-6-astra-xhigh` (`model=<selected-model>`, `reasoning_effort=xhigh`) performs all verification discovery and refinement, issue triage, dependency analysis, grouping, ordering, research, planning, root-cause analysis, and debugging.
-- `gpt-6-astra-low` (`model=<selected-model>`, `reasoning_effort=low`) performs all implementation and fix edits in the current issue worktree.
+- `gpt-6-astra-low` (`model=<selected-model>`, `reasoning_effort=low`) performs all implementation and fix edits in the selected worktree.
 - The coordinator must not independently make any technical triage or debugging judgment.
 - Apply the subagent model selection policy to every role; model fallback does not change role boundaries or reasoning effort.
 
@@ -46,6 +56,6 @@ If any agent hits the harness's subagent thread limit, it must stop immediately,
 
 ## Required procedure
 
-The root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) exactly. In all-open mode, the root agent inventories all open issues, delegates triage to `gpt-6-astra-xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one branch, worktree, implementation, pull request, and merge; grouping is not parallel execution.
+The root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In all-open mode, the root agent inventories all open issues, delegates triage to `gpt-6-astra-xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. In reduced modes, later efforts use validated local prerequisites in the same worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
 
 Do not bypass repository protections, required checks, model requirements, or unresolved blockers. Stop after the bounded remediation limit in the workflow and report evidence instead of guessing.

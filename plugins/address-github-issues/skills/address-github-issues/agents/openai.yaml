@@ -1,4 +1,4 @@
 interface:
   display_name: "Address GitHub Issues"
   short_description: "Triage and resolve GitHub issues safely"
-  default_prompt: "Use $address-github-issues [issue-number-or-url] to address one issue, or omit the argument to address all open issues."
+  default_prompt: "Use $address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]; omit the issue for all open issues, use --no-pr for local commits, or --no-commit for uncommitted changes in the current worktree."
