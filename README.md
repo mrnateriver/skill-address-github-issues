@@ -82,11 +82,3 @@ and reasoning-effort settings for subagents. To use another provider, update
 those references in both the skill and workflow files to equivalent models and
 settings supported by that provider and agent harness.
 
-## Publish
-
-Publish this entire repository, including `.agents/plugins/marketplace.json`
-and the `plugins/` directory, to
-[mrnateriver/skill-address-github-issues](https://github.com/mrnateriver/skill-address-github-issues).
-No build step or package registry is needed. The installation commands above
-use the repository's default branch;
-the GitHub installation can be verified once the repository is published.
