@@ -6,9 +6,7 @@ through an isolated worktree and a rebase-merged pull request.
 
 ## Install from GitHub
 
-Once the plugin files are published to
-[mrnateriver/skill-address-github-issues](https://github.com/mrnateriver/skill-address-github-issues),
-install with:
+Install with:
 
 ```bash
 codex plugin marketplace add https://github.com/mrnateriver/skill-address-github-issues
@@ -17,18 +15,6 @@ codex plugin add address-github-issues@address-github-issues
 
 Use a Codex CLI version that supports `codex plugin` (local installation tested
 with version 0.153.4). Restart Codex after installation to load the skill.
-
-## Install from a local checkout
-
-Run these commands from this repository's root:
-
-```bash
-codex plugin marketplace add .
-codex plugin add address-github-issues@address-github-issues
-```
-
-The marketplace loads the bundled plugin using a path relative to the
-repository root.
 
 ## Use
 
