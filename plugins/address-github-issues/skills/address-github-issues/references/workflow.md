@@ -35,7 +35,7 @@ Before stopping, that agent must write a persistent Markdown handover under the 
 - commands/checks already run, their results, current Git status, and any uncommitted files;
 - remaining work and the single next safe action after restart.
 
-Do not include credentials or other secrets. After writing the artifact, report its absolute path to the parent/root and request that the human restart the harness to clean up sessions. The root must cancel the active issue flow and surface that restart request; no agent may resume the run in the exhausted harness.
+Do not include credentials or other secrets. After writing the artifact, report its absolute path to the parent/root and request that the human restart the harness to clean up sessions. The root must cancel all active issue flows and surface that restart request; no agent may resume the run in the exhausted harness.
 
 ## 1. Root agent: resolve scope and delivery mode
 
@@ -50,7 +50,7 @@ Interpret `$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]`
 
 Default mode delivers through a fresh branch/worktree and a merged PR per effort. Both reduced modes use the invoking worktree throughout the run, perform only read operations against GitHub, and leave issues open. `--no-pr` creates one local commit per validated effort on the current branch, without pushing. `--no-commit` leaves all efforts in one accumulated changeset without commits, temporary commits, or stashes. Neither reduced mode creates or switches branches/worktrees, synchronizes with `main`, or rebases existing work.
 
-The root agent performs efforts strictly sequentially. It must wait for a coordinator to finish and report its current effort before spawning a fresh coordinator for the next. A pre-approved multi-issue group counts as one effort and is still processed serially relative to every other effort.
+The root agent schedules efforts according to the Astra-xhigh triage report and the parallel execution rules below. Proven independent efforts must run through separate parallel coordinator flows; otherwise wait for the current coordinator to report before starting the next effort. A pre-approved multi-issue group counts as one effort.
 
 ## 2. Root agent: preflight
 
@@ -101,7 +101,8 @@ The triage report must be detailed and decision-complete. It must contain:
 - candidate multi-issue groups and an explicit justification or rejection for each plausible group;
 - whether external research is beneficial for each effort and why;
 - a dependency graph, blocked reason for every blocked node, and the ordered list of efforts;
-- the oldest creation timestamp and member issue numbers for every grouped effort.
+- the oldest creation timestamp and member issue numbers for every grouped effort;
+- explicit parallel-safe sets of dependency-ready efforts, with evidence that they are completely unrelated and cannot interfere through implementation, contracts, migrations, generated artifacts, validation resources, or delivery; explain why remaining efforts require sequential execution.
 
 Triage and debugging are Astra-xhigh work. The root agent may ask the triage subagent to clarify an incomplete report, but it must not fill gaps itself.
 
@@ -132,7 +133,15 @@ Group issues only when the Astra-xhigh triage report establishes all of the foll
 
 Shared labels, the same component, nearby files, or potential merge conflicts are not sufficient reasons to group. When uncertain, keep issues separate. In single-issue mode, grouping is forbidden.
 
-## 5. Root agent: process each effort sequentially
+### Parallel execution rules
+
+In default mode, when Astra-xhigh triage proves that dependency-ready efforts are completely unrelated, do not interfere in any way, and are completely safe to implement concurrently, the root **must** spawn their fresh coordinators in parallel. Each coordinator runs the full flow below, including delegated eligibility triage, implementation, verification, PR creation, and merge. Different issue numbers, disjoint files, or the absence of dependency edges alone do not prove independence. If evidence is missing, obtain triage clarification; do not assume safety.
+
+Use a separate branch and worktree per effort and isolate any mutable validation resources. The root serializes operations on shared local `main` and grants only one coordinator at a time permission to perform the final integration sequence in section 5.9. Other coordinators may continue independent work while awaiting their integration turn. Parallel implementation never permits non-linear `main` history: all created PRs must be rebase-merged, with no squash merges or merge commits.
+
+Use the triage ordering to launch parallel-safe efforts deterministically. An effort with prerequisites waits for their successful delivery and refreshed Astra-xhigh eligibility. If new evidence invalidates independence, pause the affected flows and obtain revised triage before continuing them. Reduced modes remain sequential because they share the invoking worktree, index, and accumulated changes; do not create extra worktrees or change delivery mode to enable parallelism.
+
+## 5. Root agent: process each effort
 
 For each effort selected, grouped, and ordered by the Astra-xhigh triage report, the root agent spawns a **new** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`) with the repository path, delivery mode, raw inventory, current raw member-issue data, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. In reduced modes, also pass the invoking worktree, recorded starting state, and accumulated local progress. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator for another effort and does not make technical decisions between efforts.
 
@@ -239,9 +248,9 @@ Default mode only. Reduced modes skip this entire section and perform no GitHub 
 1. Monitor every required pull-request check until it reaches a terminal state.
 2. Never merge while a required check is pending, skipped unexpectedly, cancelled, or failing.
 3. For any failure, collect the full check output and delegate diagnosis to `gpt-6-astra-xhigh`; delegate the resulting code change to `gpt-6-astra-low`; then validate, commit, rebase if needed, and push again.
-4. Confirm the branch remains based on the latest `main` before merge. Rebase and rerun affected checks when required.
+4. Obtain the root's exclusive integration turn before the final fetch, rebase, validation, and merge sequence; retain it until the merge is confirmed or this attempt is abandoned. Confirm the branch remains based on the latest `origin/main`. If it advanced, rebase, rerun applicable verification, push with `--force-with-lease`, and wait for required checks on the updated head. Recheck the base immediately before merging; if external work advances `main`, repeat this sequence rather than merging stale validation.
 5. Merge only with GitHub's rebase-merge method. Do not squash, create a merge commit, bypass protections, or use administrator override.
-6. Verify the pull request state is merged and record the merge commit.
+6. Verify the pull request state is merged, record the merge commit, and confirm the newly integrated `main` history is linear (no merge commits). Release the integration turn so the next coordinator can integrate against the updated base.
 7. Verify every delivered issue is closed. If a correct `Closes` keyword did not close an issue, close it with a comment linking the merged pull request.
 
 ### 5.10 Report the effort
@@ -259,7 +268,7 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 - confirmed final issue states;
 - any omitted delivery steps or PR-only checks, unfinished changes, deferred or newly discovered work.
 
-Only after this report may the root agent start the next eligible effort, fast-forwarding `main` only in default mode. Before selecting a later effort in reduced modes, ask the Astra-xhigh triage delegate to refresh dependency readiness using the local effort reports and accumulated current artifacts, while preserving the original issue scope. Continue in the same worktree with earlier work intact, unless an attempted effort failed and stopped the shared run.
+The root may start parallel-safe efforts without waiting for peer reports. Before starting dependent or sequential efforts, wait for the necessary reports and refresh eligibility; serialize safe fast-forwards of local `main` in default mode. Before selecting a later effort in reduced modes, ask the Astra-xhigh triage delegate to refresh dependency readiness using the local effort reports and accumulated current artifacts, while preserving the original issue scope. Continue in the same worktree with earlier work intact, unless an attempted effort failed and stopped the shared run.
 
 ## 6. Root agent: finish the run
 
@@ -273,6 +282,7 @@ After all executable efforts are reported, the root agent returns one final orde
 - blocked issues, their unresolved dependencies, and evidence;
 - issues opened after the snapshot, without processing them;
 - validation results, omitted delivery steps, and unfinished changes;
-- confirmation that efforts ran sequentially and either all merges used rebase merge or the reduced mode performed no remote writes.
+- which efforts ran in parallel, the triage evidence establishing their independence, and which ran sequentially;
+- confirmation that integration was serialized, all created PRs were rebase-merged, and resulting `main` history remained linear, or that the reduced mode performed no remote writes.
 
 Distinguish completion of the requested local delivery from resolution of a GitHub issue: uncommitted and locally committed outcomes leave issues open and are not merged resolutions. Never claim a blocked or unchecked effort succeeded. Do not delete worktrees or branches unless the user or repository workflow explicitly requests cleanup.

@@ -46,7 +46,9 @@ Each effort coordinator owns that effort from its eligibility refresh through it
 - The coordinator must not independently make any technical triage or debugging judgment.
 - Apply the subagent model selection policy to every role; model fallback does not change role boundaries or reasoning effort.
 
-The root agent waits for each coordinator before refreshing scope and starting the next. It must not run effort coordinators in parallel. A grouped effort is handled by one fresh coordinator, not one coordinator per member issue.
+When Astra-xhigh triage establishes that dependency-ready efforts are completely unrelated, cannot interfere with one another, and are completely safe to implement in parallel, the root agent **must** launch separate parallel coordinator flows, one fresh coordinator per effort. Each flow owns eligibility refresh and delegated triage, implementation, verification, and delivery, including merging in default mode. Follow the concurrency safeguards in [references/workflow.md](references/workflow.md#parallel-execution-rules); otherwise run efforts sequentially. A grouped effort is handled by one fresh coordinator, not one coordinator per member issue.
+
+Parallel implementation must still produce linear `main` history. Serialize integration into `main`, and rebase-merge every created PR; never squash-merge or create merge commits. Reduced modes retain their delivery boundaries.
 
 ## Execution mode and thread limits
 
