@@ -1,6 +1,6 @@
 {
   "name": "address-github-issues",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Inventory, triage, and implement GitHub issues with uncommitted changes, local commits, or isolated worktrees and rebase-merged pull requests.",
   "homepage": "https://github.com/mrnateriver/skill-address-github-issues",
   "repository": "https://github.com/mrnateriver/skill-address-github-issues",

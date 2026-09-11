@@ -43,14 +43,14 @@ During the preflight in [references/workflow.md](references/workflow.md), the ro
 
 For every dependency-ready individual issue or deliberately approved grouped effort, the root agent spawns exactly one **fresh** coordinator (`model=<selected-model>`, `reasoning_effort=low`). It passes the coordinator the repository path, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the invoking worktree, starting branch/commit and pre-existing changes, and accumulated local progress. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
 
-Each effort coordinator owns that effort from its eligibility refresh through its report, but it is orchestration-only:
+Each effort coordinator owns that effort from workspace selection through its report, but it is orchestration-only:
 
 - An xhigh-reasoning subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) performs all verification discovery and refinement, issue triage, dependency analysis, grouping, ordering, research, planning, root-cause analysis, and debugging.
 - A low-reasoning subagent (`model=<selected-model>`, `reasoning_effort=low`) performs all implementation and fix edits in the selected worktree.
 - The coordinator must not independently make any technical triage or debugging judgment.
 - Apply the subagent model selection policy to every role; model fallback does not change role boundaries or reasoning effort.
 
-When Astra-xhigh triage establishes that dependency-ready efforts are completely unrelated, cannot interfere with one another, and are completely safe to implement in parallel, the root agent **must** launch separate parallel coordinator flows, one fresh coordinator per effort. Each flow owns eligibility refresh and delegated triage, implementation, verification, and delivery, including merging in default mode. Follow the concurrency safeguards in [references/workflow.md](references/workflow.md#parallel-execution-rules); otherwise run efforts sequentially. A grouped effort is handled by one fresh coordinator, not one coordinator per member issue.
+When Astra-xhigh triage establishes that dependency-ready efforts are completely unrelated, cannot interfere with one another, and are completely safe to implement in parallel, the root agent **must** launch separate parallel coordinator flows, one fresh coordinator per effort. Each flow owns implementation, verification, and delivery, including merging in default mode. Follow the concurrency safeguards in [references/workflow.md](references/workflow.md#parallel-execution-rules); otherwise run efforts sequentially. A grouped effort is handled by one fresh coordinator, not one coordinator per member issue.
 
 Parallel implementation must still produce linear `main` history. Serialize integration into `main`, and rebase-merge every created PR; never squash-merge or create merge commits. Reduced modes retain their delivery boundaries.
 

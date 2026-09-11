@@ -135,26 +135,19 @@ Shared labels, the same component, nearby files, or potential merge conflicts ar
 
 ### Parallel execution rules
 
-In default mode, when Astra-xhigh triage proves that dependency-ready efforts are completely unrelated, do not interfere in any way, and are completely safe to implement concurrently, the root **must** spawn their fresh coordinators in parallel. Each coordinator runs the full flow below, including delegated eligibility triage, implementation, verification, PR creation, and merge. Different issue numbers, disjoint files, or the absence of dependency edges alone do not prove independence. If evidence is missing, obtain triage clarification; do not assume safety.
+In default mode, when Astra-xhigh triage proves that dependency-ready efforts are completely unrelated, do not interfere in any way, and are completely safe to implement concurrently, the root **must** spawn their fresh coordinators in parallel. Each coordinator runs the full flow below, including implementation, verification, PR creation, and merge. Different issue numbers, disjoint files, or the absence of dependency edges alone do not prove independence. If evidence is missing, obtain triage clarification; do not assume safety.
 
-Use a separate branch and worktree per effort and isolate any mutable validation resources. The root serializes operations on shared local `main` and grants only one coordinator at a time permission to perform the final integration sequence in section 5.9. Other coordinators may continue independent work while awaiting their integration turn. Parallel implementation never permits non-linear `main` history: all created PRs must be rebase-merged, with no squash merges or merge commits.
+Use a separate branch and worktree per effort and isolate any mutable validation resources. The root serializes operations on shared local `main` and grants only one coordinator at a time permission to perform the final integration sequence in section 5.8. Other coordinators may continue independent work while awaiting their integration turn. Parallel implementation never permits non-linear `main` history: all created PRs must be rebase-merged, with no squash merges or merge commits.
 
-Use the triage ordering to launch parallel-safe efforts deterministically. An effort with prerequisites waits for their successful delivery and refreshed Astra-xhigh eligibility. If new evidence invalidates independence, pause the affected flows and obtain revised triage before continuing them. Reduced modes remain sequential because they share the invoking worktree, index, and accumulated changes; do not create extra worktrees or change delivery mode to enable parallelism.
+Use the triage ordering to launch parallel-safe efforts deterministically. An effort with prerequisites waits for their successful delivery. If new evidence invalidates independence, pause the affected flows and obtain revised triage before continuing them. Reduced modes remain sequential because they share the invoking worktree, index, and accumulated changes; do not create extra worktrees or change delivery mode to enable parallelism.
 
 ## 5. Root agent: process each effort
 
-For each effort selected, grouped, and ordered by the Astra-xhigh triage report, the root agent spawns a **new** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`) with the repository path, delivery mode, raw inventory, current raw member-issue data, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. In reduced modes, also pass the invoking worktree, recorded starting state, and accumulated local progress. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator for another effort and does not make technical decisions between efforts.
+For each effort selected, grouped, and ordered by the Astra-xhigh triage report, the root agent spawns a **new** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`) with the repository path, delivery mode, raw inventory, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. In reduced modes, also pass the invoking worktree, recorded starting state, and accumulated local progress. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator for another effort and does not make technical decisions between efforts.
 
-### 5.1 Refresh eligibility
+The inventory and combined triage are the sole eligibility decision for the run; coordinators do not refresh issue or dependency state before starting. This deliberately accepts a TOCTOU risk: an issue may be closed, edited, or newly blocked after triage, so work can begin from stale GitHub state. Final validation, current-`main` rebasing, and issue-state reporting still apply, but they do not eliminate that risk.
 
-1. In default mode, safe-fast-forward local `main` again. In reduced modes, inspect the current worktree and preserve all prior effort changes and pre-existing edits.
-2. Refresh every member issue and its known dependencies.
-3. Skip and report members already closed by other work.
-4. If issue data or dependency state changed materially, send the new raw evidence back to `gpt-6-astra-xhigh` for revised triage. In reduced modes, include locally validated prerequisite reports so open GitHub issues are not automatically treated as unsatisfied dependencies. The coordinator must not revise the ordering or group itself.
-5. Do not start an effort that the latest Astra-xhigh report marks blocked.
-6. If repository instructions, verification configuration, or affected artifact types have changed since verification discovery, obtain an updated report from `gpt-6-astra-xhigh` before baseline validation.
-
-### 5.2 Select the workspace and run the baseline
+### 5.1 Select the workspace and run the baseline
 
 In reduced modes, keep using the invoking worktree and current branch. Skip steps 1–4 below. Record the state before this effort, including prior efforts and pre-existing edits, so its own changes can be reviewed and, with `--no-pr`, committed separately. Never reset or clean the worktree between efforts.
 
@@ -169,13 +162,13 @@ In every mode, run applicable baseline checks from the verification and triage r
 
 If baseline validation fails, capture exact commands and complete output and delegate diagnosis to `gpt-6-astra-xhigh`. Do not let the coordinator diagnose or waive a red baseline. Proceed only if Astra-xhigh proves the failure is unrelated and the governing repository instructions permit proceeding; otherwise report the effort blocked.
 
-### 5.3 Research external context
+### 5.2 Research external context
 
 When the triage report marks research beneficial, spawn a dedicated `gpt-6-astra-xhigh` research subagent before planning. Give it the issue data, triage report, repository instructions, and precise research questions.
 
 Research may cover existing solutions and libraries, algorithms, protocols, standards, compatibility constraints, security guidance, performance or quality metrics, and baseline measurements. Require a detailed report with primary sources, conclusions, alternatives, risks, and concrete implications for the plan. The coordinator passes the report onward without replacing its conclusions.
 
-### 5.4 Diagnose the issue
+### 5.3 Diagnose the issue
 
 For bugs, regressions, failures, performance problems, or unclear behavior, spawn a `gpt-6-astra-xhigh` debugging subagent before planning. Require it to inspect the real code path, reproduce when feasible, trace callers and data flow, compare working patterns, and provide an evidence-backed root-cause report.
 
@@ -183,7 +176,7 @@ For a pure feature or documentation issue, the Astra-xhigh triage report may exp
 
 No fix may be planned from symptoms alone. If root cause remains unknown, report the effort blocked rather than asking Astra-low to guess.
 
-### 5.5 Produce the implementation plan
+### 5.4 Produce the implementation plan
 
 Spawn a fresh `gpt-6-astra-xhigh` planning subagent. Give it:
 
@@ -196,7 +189,7 @@ Spawn a fresh `gpt-6-astra-xhigh` planning subagent. Give it:
 
 Require a decision-complete plan covering scope, code or documentation changes, interfaces, edge cases, migration or compatibility needs, tests, acceptance criteria, and validation. The planner refines the verification report for the effort's artifacts and acceptance criteria, adding effort-specific checks and updating procedures when requirements change. The plan must identify how one grouped change satisfies each member issue separately. The coordinator may request clarification but must not invent missing technical decisions.
 
-### 5.6 Implement in the worktree
+### 5.5 Implement in the worktree
 
 Spawn a `gpt-6-astra-low` implementation subagent (`model=<selected-model>`, `reasoning_effort=low`) in the selected worktree. Give it the delivery mode, approved plan, and all supporting reports. Require it to:
 
@@ -210,12 +203,12 @@ Spawn a `gpt-6-astra-low` implementation subagent (`model=<selected-model>`, `re
 
 The coordinator must not edit implementation files. If implementation reveals a missing technical decision, return to Astra-xhigh planning instead of letting Astra-low or the coordinator guess.
 
-### 5.7 Review and validate
+### 5.6 Review and validate
 
 1. Collect the diff and implementation report. In reduced modes, distinguish this effort's delta from prior efforts and pre-existing changes, and assess regressions against the accumulated current state.
 2. Give them and the latest verification report to a `gpt-6-astra-xhigh` verification subagent to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
 3. Delegate any required edit to `gpt-6-astra-low`.
-4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. In default mode, run CI-only checks through section 5.9; their results gate merging. In reduced modes, report PR-only checks as omitted by the mode, never as passed.
+4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. In default mode, run CI-only checks through section 5.8; their results gate merging. In reduced modes, report PR-only checks as omitted by the mode, never as passed.
 5. Confirm only intended changes were introduced by this effort, with earlier work and pre-existing edits preserved, and run `git diff --check`.
 
 Any unexpected result goes first to a `gpt-6-astra-xhigh` debugging subagent with raw evidence. Only after diagnosis may a `gpt-6-astra-low` subagent implement the prescribed fix. The coordinator never diagnoses the failure itself.
@@ -224,10 +217,10 @@ Allow at most five diagnose-fix-verify cycles for one effort across local valida
 
 In either reduced mode, an attempted effort that cannot complete after the permitted remediation stops further implementation in the shared worktree. Preserve earlier commits or uncommitted work and the unfinished changes; report previously validated efforts separately from the current, possibly failing state. Do not roll back the effort or continue implementing other issues. Issues skipped or blocked during triage without edits do not prevent other eligible efforts from running.
 
-### 5.8 Deliver according to the selected mode
+### 5.7 Deliver according to the selected mode
 
-- `--no-commit`: after successful local validation, leave every effort's changes in the same accumulated current changeset. Create no commits, temporary commits, or stashes. Proceed directly to section 5.10.
-- `--no-pr`: after successful local validation, create one commit for this issue or approved group on the existing current branch, with an imperative, non-Conventional-Commit message following repository conventions. Commit only this effort's changes, preserving unrelated staged and unstaged edits. Do not blindly commit the existing index; if overlapping changes cannot be safely separated, report a blocker. Do not push, rebase, or create a PR. Proceed directly to section 5.10.
+- `--no-commit`: after successful local validation, leave every effort's changes in the same accumulated current changeset. Create no commits, temporary commits, or stashes. Proceed directly to section 5.9.
+- `--no-pr`: after successful local validation, create one commit for this issue or approved group on the existing current branch, with an imperative, non-Conventional-Commit message following repository conventions. Commit only this effort's changes, preserving unrelated staged and unstaged edits. Do not blindly commit the existing index; if overlapping changes cannot be safely separated, report a blocker. Do not push, rebase, or create a PR. Proceed directly to section 5.9.
 
 The remaining steps in this section apply only to default mode:
 
@@ -241,7 +234,7 @@ The remaining steps in this section apply only to default mode:
 
 One grouped effort produces exactly one pull request. Do not place unrelated issues in its closing keywords.
 
-### 5.9 Make checks green and rebase-merge
+### 5.8 Make checks green and rebase-merge
 
 Default mode only. Reduced modes skip this entire section and perform no GitHub writes, including PR creation, merges, comments, or issue closure.
 
@@ -253,7 +246,7 @@ Default mode only. Reduced modes skip this entire section and perform no GitHub 
 6. Verify the pull request state is merged, record the merge commit, and confirm the newly integrated `main` history is linear (no merge commits). Release the integration turn so the next coordinator can integrate against the updated base.
 7. Verify every delivered issue is closed. If a correct `Closes` keyword did not close an issue, close it with a comment linking the merged pull request.
 
-### 5.10 Report the effort
+### 5.9 Report the effort
 
 The coordinator reports after each effort reaches its delivery boundary, or when it is skipped or blocked:
 
@@ -268,7 +261,7 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 - confirmed final issue states;
 - any omitted delivery steps or PR-only checks, unfinished changes, deferred or newly discovered work.
 
-The root may start parallel-safe efforts without waiting for peer reports. Before starting dependent or sequential efforts, wait for the necessary reports and refresh eligibility; serialize safe fast-forwards of local `main` in default mode. Before selecting a later effort in reduced modes, ask the Astra-xhigh triage delegate to refresh dependency readiness using the local effort reports and accumulated current artifacts, while preserving the original issue scope. Continue in the same worktree with earlier work intact, unless an attempted effort failed and stopped the shared run.
+The root may start parallel-safe efforts without waiting for peer reports. Before starting dependent or sequential efforts, wait for the necessary reports; serialize safe fast-forwards of local `main` in default mode. In reduced modes, continue in the same worktree with earlier work intact unless an attempted effort failed and stopped the shared run.
 
 ## 6. Root agent: finish the run
 
