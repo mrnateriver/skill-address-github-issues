@@ -74,7 +74,8 @@ separately from omitted PR-only checks and delivery steps.
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
 - A Codex harness supporting subagents with the required `xhigh` and `low`
-  reasoning efforts. Model selection follows this order: `gpt-6-astra` →
+  reasoning efforts. A user-specified model or model family overrides the default
+  for every descendant. Without an override, model selection follows this order: `gpt-6-astra` →
   `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`. If a model is unavailable, every
   agent must use the next available model that supports the role's reasoning
   effort and any requested fast mode. Model availability blocks the run only
@@ -86,7 +87,7 @@ separately from omitted PR-only checks and delivery steps.
   the current worktree, including existing local commits and edits; `--no-pr`
   requires an existing current branch.
 - The tools and environment needed to verify the target repository's artifacts.
-  Before issue inventory and processing, an Astra-xhigh preflight delegate
+  Before issue inventory and processing, an xhigh-reasoning preflight delegate
   determines verification steps from repository instructions, CI, manifests,
   scripts, documentation, and artifact types. Its report guides baseline checks
   and final verification, with effort-specific refinements during planning.
@@ -99,7 +100,6 @@ and [workflow](plugins/address-github-issues/skills/address-github-issues/refere
 define sequential issue processing, required delegation, and bounded retries.
 
 The skill's core workflow is broadly reusable across AI agents that support
-subagent delegation. Its current instructions explicitly reference OpenAI models
-and reasoning-effort settings for subagents. To use another provider, update
-those references in both the skill and workflow files to equivalent models and
-settings supported by that provider and agent harness.
+subagent delegation. Users can override the default OpenAI model preference with
+an exact model or model family supported by their harness; the required `xhigh`
+and `low` reasoning roles still apply.

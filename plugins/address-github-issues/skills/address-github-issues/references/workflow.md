@@ -18,7 +18,7 @@ Delegate every triage or debugging judgment to `gpt-6-astra-xhigh` (`model=<sele
 
 Determining or revising verification steps and performing technical manual reviews are also Astra-xhigh work. The root and coordinators relay the verification report and run prescribed checks; they must not independently choose or waive verification requirements.
 
-Apply [Subagent model selection](../SKILL.md#subagent-model-selection) to every spawn and propagate it recursively. All Astra role names in this workflow use the selected available model with the stated reasoning effort. A model being unavailable requires trying the next model in the ordered list; only exhaustion of that list blocks the run for model availability. Report every fallback.
+Apply [Subagent model selection](../SKILL.md#subagent-model-selection) to every spawn and propagate it recursively. All Astra role names in this workflow mean the user-selected model or model family, when provided, with the stated reasoning effort. Without a user override, use the default fallback list. Do not substitute another family for an explicit user choice; report every fallback or blocker.
 
 ## Execution mode inheritance and thread exhaustion
 

@@ -5,7 +5,7 @@ description: Inventory, triage, order, group, and implement a repository's GitHu
 
 # Address GitHub Issues
 
-The invoking root agent first obtains repository-specific artifact verification steps during preflight, inventories the requested issue snapshot, spawns a `gpt-6-astra-xhigh` subagent to triage it, then uses that triage report to run each approved issue or grouped effort through its own fresh coordinator subagent. The root agent does not perform technical triage or implementation work.
+The invoking root agent first obtains repository-specific artifact verification steps during preflight, inventories the requested issue snapshot, spawns an xhigh-reasoning subagent to triage it, then uses that triage report to run each approved issue or grouped effort through its own fresh coordinator subagent. The root agent does not perform technical triage or implementation work.
 
 ## Invocation modes
 
@@ -25,24 +25,28 @@ The invoking root agent first obtains repository-specific artifact verification 
 
 ## Subagent model selection
 
-For every subagent, use the first available model in this priority order:
+If the user specifies an LLM model or model family, that choice overrides the default below. Use it for every subagent and descendant, selecting a compatible model within the requested family when the request names a family rather than an exact model. Do not silently substitute a different family; report a blocker if the requested family cannot support a required reasoning effort or fast mode.
+
+Without a user override, use the first available model in this priority order:
 
 `gpt-6-astra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
 
 If the preferred model is unavailable, the agent must select the next available model in this list instead of stopping. Resolve availability from the harness's model catalog or an explicit model-unavailable error. Preserve the role's required reasoning effort (`xhigh` or `low`) and any requested fast mode; select only a model that supports that configuration. Report a model-availability blocker only after exhausting the list.
 
-Throughout this skill and its workflow, `gpt-6-astra-xhigh`/Astra-xhigh and `gpt-6-astra-low`/Astra-low name the preferred role configurations. When falling back, use the selected model with the same reasoning effort for every reference to that role. Replace `<selected-model>` in spawn arguments with the actual model identifier. Pass this policy to every descendant and record the actual model, reasoning effort, and reason for any fallback in delegate reports. Task failures, transient errors, and thread exhaustion do not justify model fallback; follow their existing handling rules.
+Replace `<selected-model>` in spawn arguments with the actual model identifier. Pass the user's override or default fallback policy to every descendant and record the actual model, reasoning effort, and reason for any fallback in delegate reports. Task failures, transient errors, and thread exhaustion do not justify model fallback; follow their existing handling rules.
+
+Any `gpt-6-astra-*` or Astra role label remaining in this skill or its workflow is shorthand for `<selected-model>` at the stated reasoning effort; it never overrides the user's model or model-family choice.
 
 ## Mandatory delegation
 
-During the preflight in [references/workflow.md](references/workflow.md), the root agent spawns a dedicated `gpt-6-astra-xhigh` subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) to determine the necessary artifact verification steps from the target repository's instructions, tooling, CI, and artifact types. It waits for that verification report before fetching the raw issue inventory, then spawns exactly one `gpt-6-astra-xhigh` triage subagent with the complete raw inventory and verification report. It uses only the triage subagent's decision-complete report to select, group, order, and spawn effort coordinators; it must not pre-classify issues, make triage decisions, or fill gaps in either report.
+During the preflight in [references/workflow.md](references/workflow.md), the root agent spawns a dedicated subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) to determine the necessary artifact verification steps from the target repository's instructions, tooling, CI, and artifact types. It waits for that verification report before fetching the raw issue inventory, then spawns exactly one xhigh-reasoning triage subagent with the complete raw inventory and verification report. It uses only the triage subagent's decision-complete report to select, group, order, and spawn effort coordinators; it must not pre-classify issues, make triage decisions, or fill gaps in either report.
 
-For every dependency-ready individual issue or deliberately approved grouped effort, the root agent spawns exactly one **fresh** `gpt-6-astra-low` coordinator (`model=<selected-model>`, `reasoning_effort=low`). It passes the coordinator the repository path, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the invoking worktree, starting branch/commit and pre-existing changes, and accumulated local progress. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
+For every dependency-ready individual issue or deliberately approved grouped effort, the root agent spawns exactly one **fresh** coordinator (`model=<selected-model>`, `reasoning_effort=low`). It passes the coordinator the repository path, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the invoking worktree, starting branch/commit and pre-existing changes, and accumulated local progress. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
 
 Each effort coordinator owns that effort from its eligibility refresh through its report, but it is orchestration-only:
 
-- `gpt-6-astra-xhigh` (`model=<selected-model>`, `reasoning_effort=xhigh`) performs all verification discovery and refinement, issue triage, dependency analysis, grouping, ordering, research, planning, root-cause analysis, and debugging.
-- `gpt-6-astra-low` (`model=<selected-model>`, `reasoning_effort=low`) performs all implementation and fix edits in the selected worktree.
+- An xhigh-reasoning subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) performs all verification discovery and refinement, issue triage, dependency analysis, grouping, ordering, research, planning, root-cause analysis, and debugging.
+- A low-reasoning subagent (`model=<selected-model>`, `reasoning_effort=low`) performs all implementation and fix edits in the selected worktree.
 - The coordinator must not independently make any technical triage or debugging judgment.
 - Apply the subagent model selection policy to every role; model fallback does not change role boundaries or reasoning effort.
 
