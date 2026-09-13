@@ -220,7 +220,7 @@ In either reduced mode, an attempted effort that cannot complete after the permi
 ### 5.7 Deliver according to the selected mode
 
 - `--no-commit`: after successful local validation, leave every effort's changes in the same accumulated current changeset. Create no commits, temporary commits, or stashes. Proceed directly to section 5.9.
-- `--no-pr`: after successful local validation, create one commit for this issue or approved group on the existing current branch, with an imperative, non-Conventional-Commit message following repository conventions. Commit only this effort's changes, preserving unrelated staged and unstaged edits. Do not blindly commit the existing index; if overlapping changes cannot be safely separated, report a blocker. Do not push, rebase, or create a PR. Proceed directly to section 5.9.
+- `--no-pr`: after successful local validation, create one commit for this issue or approved group on the existing current branch, with an imperative, non-Conventional-Commit message following repository conventions. The commit message must include `Closes #<issue number>` for every original GitHub issue delivered by the effort. Commit only this effort's changes, preserving unrelated staged and unstaged edits. Do not blindly commit the existing index; if overlapping changes cannot be safely separated, report a blocker. Do not push, rebase, or create a PR. Proceed directly to section 5.9.
 
 The remaining steps in this section apply only to default mode:
 
