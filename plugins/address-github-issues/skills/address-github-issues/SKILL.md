@@ -29,7 +29,7 @@ If the user specifies an LLM model or model family, that choice overrides the de
 
 Without a user override, use the first available model in this priority order:
 
-`gpt-6-astra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
+`gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
 
 If the preferred model is unavailable, the agent must select the next available model in this list instead of stopping. Resolve availability from the harness's model catalog or an explicit model-unavailable error. Preserve the role's required reasoning effort (`xhigh` or `low`) and any requested fast mode; select only a model that supports that configuration. Report a model-availability blocker only after exhausting the list.
 
