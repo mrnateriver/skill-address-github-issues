@@ -18,7 +18,7 @@ Delegate every triage or debugging judgment to `gpt-6-astra-xhigh` (`model=<sele
 
 Determining or revising verification steps and performing technical manual reviews are also Astra-xhigh work. The root and coordinators relay the verification report and run prescribed checks; they must not independently choose or waive verification requirements.
 
-Apply [Subagent model selection](../SKILL.md#subagent-model-selection) to every spawn and propagate it recursively. All Astra role names in this workflow mean the user-selected model or model family, when provided, with the stated reasoning effort. Without a user override, use the default fallback list. Do not substitute another family for an explicit user choice; report every fallback or blocker.
+Apply [Subagent model selection](../SKILL.md#subagent-model-selection) to every spawn and propagate it recursively. All Astra role names in this workflow mean the user-selected model or model family, when provided, with the stated reasoning effort, except where an issue's exact `astra` label invokes the role-specific family override. Without either override, use the default fallback list. Do not substitute another family outside that explicit label rule; report every fallback or blocker.
 
 ## Execution mode inheritance and thread exhaustion
 
@@ -61,7 +61,7 @@ Before fetching issue details:
 3. Verify GitHub authentication and read access to the repository. Only default mode requires permission to push, create PRs, rebase-merge, and close issues.
 4. In default mode, inspect local `main`. If it is dirty, ahead of `origin/main`, diverged, or unavailable for a safe fast-forward, stop and report the exact state. In reduced modes, use the invoking worktree as it stands, including local commits and edits; `--no-pr` requires an existing current branch. Never stash, reset, discard, or overwrite user work.
 5. In default mode only, fetch `origin/main`, fast-forward local `main` with `--ff-only`, and verify local `main` equals `origin/main`. Reduced modes do not require an up-to-date local `main` or alter the invoking branch's relationship to its remote.
-6. Resolve an available model for the required `xhigh` and `low` role configurations using the subagent model selection policy before starting the issue inventory. Record any fallbacks and propagate the policy to every delegate.
+6. Resolve the ordinary model for the required `xhigh` and `low` role configurations using the subagent model selection policy before starting the issue inventory. Record any fallbacks and propagate the policy to every delegate. Apply the literal `astra` label override only after fetching the labels in the inventory.
 7. Spawn a dedicated `gpt-6-astra-xhigh` preflight subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the repository path, delivery mode, recorded starting state, repository instructions, and this workflow to determine the necessary artifact verification steps. Wait for its report before fetching issue details.
 
 The preflight subagent inspects repository instructions, CI configuration, manifests, existing scripts, documentation, and artifact types. Its verification report must identify applicable automated checks or explicit manual review procedures, working directories, prerequisites, execution stage (local or CI), and success criteria, with supporting repository evidence. Distinguish baseline checks from final artifact verification and identify required CI checks. In reduced modes, use the current worktree for the baseline and identify PR-only checks as omitted by the delivery mode, not passed or local prerequisites. Verification commands must respect the selected mode's Git and GitHub write boundaries. Derive verification from the target repository; do not assume a particular language, build system, or test framework.
@@ -89,7 +89,7 @@ Fetch only after the mode-specific preflight is complete and its verification re
 
 ## 4. Root agent: mandatory Astra-xhigh triage
 
-Spawn one `gpt-6-astra-xhigh` triage subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and repository path. In reduced modes, include the invoking worktree and recorded starting state. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
+Apply the literal `astra` label rule in [Subagent model selection](../SKILL.md#subagent-model-selection), then spawn one `gpt-6-astra-xhigh` triage subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and repository path. In reduced modes, include the invoking worktree and recorded starting state. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
 
 The triage report must be detailed and decision-complete. It must contain:
 
