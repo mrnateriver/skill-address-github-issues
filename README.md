@@ -42,7 +42,7 @@ on an unresolved skipped issue remain blocked.
 ### Delivery modes
 
 ```text
-$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]
+$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low]
 ```
 
 | Mode | Workspace | Commits | Remote delivery |
@@ -63,9 +63,23 @@ Flags may precede or follow the issue argument. `--no-commit` implies `--no-pr`
 and takes precedence if both are supplied. Flags without an issue select all
 open issues; unknown flags and multiple issue targets are rejected.
 
+`--simple` lets the root handle inventory and scheduling, then uses one subagent
+per issue or approved group to investigate, implement, verify, and deliver it.
+It can be combined with either reduced delivery mode. By default that subagent
+uses the highest supported effort on the selected model: `max`, then `xhigh`,
+`high`, `medium`, or `low`. For example:
+
+```text
+$address-github-issues 123 --simple --no-pr --effort high
+```
+
+`--effort` sets the exact reasoning effort for every subagent in either workflow.
+If no eligible model supports it, the run reports a blocker rather than silently
+lowering the effort. Invalid, missing, or repeated effort values are rejected.
+
 Both reduced modes retain the current branch and worktree without creating new
-ones or synchronizing or rebasing against `main`. Fresh coordinators still handle
-efforts sequentially, and later issues can use earlier validated local changes.
+ones or synchronizing or rebasing against `main`. Efforts run sequentially, and
+later issues can use earlier validated local changes.
 Pre-existing edits are preserved and unrelated changes are excluded from commits;
 unsafe overlaps are reported as blockers. If an attempted effort exhausts its
 fix attempts, implementation stops with earlier work and unfinished changes
@@ -77,8 +91,9 @@ separately from omitted PR-only checks and delivery steps.
 - Git and authenticated GitHub read access (for example, GitHub CLI via
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
-- A Codex harness supporting subagents with the required `xhigh` and `low`
-  reasoning efforts. A user-specified model or model family overrides the default
+- A Codex harness supporting the required subagent reasoning efforts. The standard
+  workflow uses `xhigh` and `low` unless `--effort` overrides them; simple mode
+  uses the highest available effort unless overridden. A user-specified model or model family overrides the default
   for every descendant except the reasoning roles forced onto `gpt-6-astra` by an
   issue label whose name is exactly `astra`. Without an override, model selection
   follows this order: `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` →
@@ -93,13 +108,14 @@ separately from omitted PR-only checks and delivery steps.
   the current worktree, including existing local commits and edits; `--no-pr`
   requires an existing current branch.
 - The tools and environment needed to verify the target repository's artifacts.
-  Before issue inventory and processing, an xhigh-reasoning preflight delegate
+  In the standard workflow, before issue inventory and processing, a preflight delegate
   determines verification steps from repository instructions, CI, manifests,
   scripts, documentation, and artifact types. Its report guides baseline checks
   and final verification, with effort-specific refinements during planning.
   Checks may be automated or explicit manual reviews. Missing automated tests
   alone are not a blocker, but unavailable required checks or an inability to
-  establish meaningful verification must be reported.
+  establish meaningful verification must be reported. In simple mode the root
+  determines these verification steps without a separate delegate.
 
 The [skill](plugins/address-github-issues/skills/address-github-issues/SKILL.md)
 and [workflow](plugins/address-github-issues/skills/address-github-issues/references/workflow.md)
@@ -107,5 +123,5 @@ define sequential issue processing, required delegation, and bounded retries.
 
 The skill's core workflow is broadly reusable across AI agents that support
 subagent delegation. Users can override the default OpenAI model preference with
-an exact model or model family supported by their harness; the required `xhigh`
-and `low` reasoning roles still apply.
+an exact model or model family supported by their harness; the reasoning effort
+policy still applies.

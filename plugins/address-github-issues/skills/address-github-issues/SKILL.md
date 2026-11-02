@@ -5,15 +5,17 @@ description: Inventory, triage, order, group, and implement a repository's GitHu
 
 # Address GitHub Issues
 
-The invoking root agent first obtains repository-specific artifact verification steps during preflight, inventories the requested issue snapshot, spawns an xhigh-reasoning subagent to triage it, then uses that triage report to run each approved issue or grouped effort through its own fresh coordinator subagent. The root agent does not perform technical triage or implementation work.
+By default, the invoking root agent delegates verification discovery and issue triage, then runs each approved issue or grouped effort through its own fresh coordinator. In `--simple` mode, the root handles inventory and scheduling and spawns one implementation subagent per effort.
 
 ## Invocation modes
 
-`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]`
+`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low]`
 
 - No issue argument: process a snapshot of every open issue in the current repository, including when only flags are supplied.
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
 - Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
+- `--simple` uses the separate [simple workflow](references/simple.md) with exactly one subagent per issue or group and no other subagents. It works with every delivery mode.
+- `--effort` overrides the reasoning effort of every subagent in either workflow. Accept one of `max`, `xhigh`, `high`, `medium`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. The requested effort is exact: use a compatible model under the model-selection policy or report a blocker; do not silently lower it.
 
 During triage, skip any issue whose labels indicate that human involvement is required, including `human`, `needs-human`, `requires-human`, and labels with the same meaning. This applies in both invocation modes. Report the issue and label; do not group, implement, or close it. Treat an unresolved skipped prerequisite as a blocker for dependent issues.
 
@@ -33,7 +35,9 @@ Without a user override, use the first available model in this priority order:
 
 `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
 
-If the preferred model is unavailable, the agent must select the next available model in this list instead of stopping. Resolve availability from the harness's model catalog or an explicit model-unavailable error. Preserve the role's required reasoning effort (`xhigh` or `low`) and any requested fast mode; select only a model that supports that configuration. Report a model-availability blocker only after exhausting the list.
+If the preferred model is unavailable, the agent must select the next available model in this list instead of stopping. Resolve availability from the harness's model catalog or an explicit model-unavailable error. Preserve the role's required reasoning effort (or the `--effort` override) and any requested fast mode; select only a model that supports that configuration. Report a model-availability blocker only after exhausting the list.
+
+In `--simple` mode without `--effort`, select the first available model under this policy, then use its highest available effort in the order `max`, `xhigh`, `high`, `medium`, `low`. Resolve supported efforts from the harness catalog or explicit unsupported-effort errors. Do not change models merely to obtain a higher effort. With `--effort`, select the first model that supports the exact requested effort and any required fast mode. Report the actual model and effort and any fallback.
 
 After fetching the inventory, compare each in-scope issue label's name to the five-character string `astra` using literal, case-sensitive, character-for-character equality. Do not trim, normalize, case-fold, pattern-match, or assess the label's meaning; for example, `Astra`, `astra `, and `gpt-6-astra` do not match. If any in-scope issue in the shared inventory matches, use the `gpt-6-astra` family for the xhigh triage subagent. For every individual or grouped effort containing a matching issue, use the `gpt-6-astra` family for all xhigh debugging, planning, and verification subagents. This label rule overrides an explicit non-Astra user choice and the ordinary fallback policy for those roles; if no `gpt-6-astra` model can satisfy the required reasoning effort and any requested fast mode, block the affected triage or effort instead of using another family. All other roles, including preflight, coordinators, research, implementation, and corrective-edit subagents, retain the ordinary selected model; the label does not switch implementation to Astra.
 
@@ -41,7 +45,11 @@ Replace `<selected-model>` in spawn arguments with the actual model identifier. 
 
 Except for the literal `astra` label rule, any `gpt-6-astra-*` or Astra role label remaining in this skill or its workflow is shorthand for `<selected-model>` at the stated reasoning effort; it never overrides the user's model or model-family choice.
 
+The `astra` label rule applies only to the specified triage, debugging, planning, and verification subagent roles. In `--simple` mode there are no such separate roles, so the single implementation subagent uses the ordinary model policy even when an issue has that label. With `--effort`, references to a role's `xhigh` or `low` effort mean the requested effort instead; role boundaries and the Astra model override remain unchanged in the standard workflow.
+
 ## Mandatory delegation
+
+This section's role and delegation requirements apply to the standard workflow. For `--simple`, follow [simple.md](references/simple.md) instead; the context handoff rule immediately below still applies.
 
 Treat every subagent as receiving none of its parent's conversation or working context, regardless of harness inheritance settings, and assume every spawn task has a strict input-size limit. Send only short, self-contained instructions directly. For every other handoff, first write the complete required context to an untracked temporary file, then spawn the subagent with the file's absolute path and an instruction to read it completely before acting. Include all required raw data, reports, decisions, repository and worktree state, and source paths in that file; never rely on inherited context or defer missing context until after the spawn. Keep the file available until the subagent reports, and apply this rule recursively to every descendant.
 
@@ -68,6 +76,6 @@ If any agent hits the harness's subagent thread limit, it must stop immediately,
 
 ## Required procedure
 
-The root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In all-open mode, the root agent inventories all open issues, delegates triage to `gpt-6-astra-xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. In reduced modes, later efforts use validated local prerequisites in the same worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
+For `--simple`, follow [references/simple.md](references/simple.md). Otherwise, the root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In all-open mode, the root agent inventories all open issues, delegates triage to `gpt-6-astra-xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. In reduced modes, later efforts use validated local prerequisites in the same worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
 
 Do not bypass repository protections, required checks, model requirements, or unresolved blockers. Stop after the bounded remediation limit in the workflow and report evidence instead of guessing.

@@ -1,5 +1,7 @@
 # GitHub issue workflow
 
+This is the standard workflow. For `--simple`, use [simple.md](simple.md) instead. When `--effort` is supplied, every specified subagent reasoning effort in this workflow is replaced by that exact value; role responsibilities and model-selection rules remain unchanged.
+
 The invoking root agent owns scope resolution, preflight, and raw inventory. During preflight it delegates artifact verification discovery to `gpt-6-astra-xhigh`; after inventory it spawns one `gpt-6-astra-xhigh` subagent for all technical triage. Using only that triage report, it spawns one fresh `gpt-6-astra-low` coordinator for each individual issue or Astra-approved grouped effort. An effort coordinator owns only that one effort.
 
 ## Non-negotiable role boundaries
@@ -39,7 +41,7 @@ Do not include credentials or other secrets. After writing the artifact, report 
 
 ## 1. Root agent: resolve scope and delivery mode
 
-Interpret `$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit]` before accessing GitHub:
+Interpret `$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low]` before accessing GitHub, using the flag validation in [Invocation modes](../SKILL.md#invocation-modes):
 
 - Parse flags independently of the optional issue target, in either order. `--no-commit` implies `--no-pr` and takes precedence when both are present. Reject unknown flags.
 - No issue argument selects all issues that are open when the inventory is taken, even when flags are supplied. This is a finite snapshot; issues opened later are not added to the active run.
