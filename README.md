@@ -35,6 +35,10 @@ $address-github-issues 123
 Only one explicit issue argument is supported. In single-issue mode, referenced
 dependencies are inspected but remain outside implementation scope.
 
+Issues labeled `human`, `needs-human`, `requires-human`, or otherwise indicating
+that human involvement is required are skipped and reported. Issues that depend
+on an unresolved skipped issue remain blocked.
+
 ### Delivery modes
 
 ```text

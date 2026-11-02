@@ -15,6 +15,8 @@ The invoking root agent first obtains repository-specific artifact verification 
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
 - Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
 
+During triage, skip any issue whose labels indicate that human involvement is required, including `human`, `needs-human`, `requires-human`, and labels with the same meaning. This applies in both invocation modes. Report the issue and label; do not group, implement, or close it. Treat an unresolved skipped prerequisite as a blocker for dependent issues.
+
 | Delivery mode | Workspace | Commits | GitHub writes |
 |---|---|---|---|
 | Default (no flags) | Fresh branch and worktree per effort | Yes | Push, PR, required checks, rebase-merge, issue closure |

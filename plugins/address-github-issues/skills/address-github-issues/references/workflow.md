@@ -91,11 +91,14 @@ Fetch only after the mode-specific preflight is complete and its verification re
 
 Apply the literal `astra` label rule in [Subagent model selection](../SKILL.md#subagent-model-selection), then spawn one `gpt-6-astra-xhigh` triage subagent (`model=<selected-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and repository path. In reduced modes, include the invoking worktree and recorded starting state. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
 
+The triage subagent applies the human-involvement label rule in [Invocation modes](../SKILL.md#invocation-modes) to each in-scope issue using the inventory labels, including semantically equivalent labels. Record skipped issues and the relevant labels; exclude them from groups and executable efforts. A dependent issue remains blocked if a skipped prerequisite is unresolved. If the sole selected issue is skipped, report it without implementation or GitHub writes. Skipped issues do not prevent unrelated eligible efforts from proceeding.
+
 The triage report must be detailed and decision-complete. It must contain:
 
 - each issue's scope and acceptance criteria;
 - applicable baseline and final verification steps for each effort, derived from the preflight verification report;
 - explicit blockers and dependencies cited by issue data;
+- skipped issues and their human-involvement labels, including any dependent issues blocked by them;
 - technical prerequisites inferred from the codebase, protocols, migrations, or rollout order, with evidence;
 - likely shared root causes and overlapping implementation surfaces;
 - candidate multi-issue groups and an explicit justification or rejection for each plausible group;
