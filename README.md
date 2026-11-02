@@ -76,7 +76,8 @@ separately from omitted PR-only checks and delivery steps.
 - A Codex harness supporting subagents with the required `xhigh` and `low`
   reasoning efforts. A user-specified model or model family overrides the default
   for every descendant except the reasoning roles forced onto `gpt-6-astra` by an
-  issue label whose name is exactly `astra`. Without an override, model selection follows this order: `gpt-5.6-sol` →
+  issue label whose name is exactly `astra`. Without an override, model selection
+  follows this order: `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` →
   `gpt-5.6-terra` → `gpt-5.5`. If a model is unavailable, every
   agent must use the next available model that supports the role's reasoning
   effort and any requested fast mode. Model availability blocks the run only
