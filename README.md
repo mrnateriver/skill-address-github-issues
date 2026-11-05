@@ -42,7 +42,7 @@ on an unresolved skipped issue remain blocked.
 ### Delivery modes
 
 ```text
-$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low]
+$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model family]
 ```
 
 | Mode | Workspace | Commits | Remote delivery |
@@ -77,6 +77,17 @@ $address-github-issues 123 --simple --no-pr --effort high
 If no eligible model supports it, the run reports a blocker rather than silently
 lowering the effort. Invalid, missing, or repeated effort values are rejected.
 
+`--model` explicitly overrides the family for every subagent, including preflight
+and shared triage, and takes precedence over labels and automatic fallbacks.
+Accepted values are `astra`, `sol-6.1`, `terra-6.1`, `luna-6.1`, `sol-5.6`,
+`terra-5.6`, and `luna-5.6`. An unavailable or incompatible explicit family blocks
+the run rather than falling back. Invalid, missing, or repeated values are rejected
+before GitHub access. For example:
+
+```text
+$address-github-issues 123 --model sol-6.1 --effort high --no-pr
+```
+
 Both reduced modes retain the current branch and worktree without creating new
 ones or synchronizing or rebasing against `main`. Efforts run sequentially, and
 later issues can use earlier validated local changes.
@@ -98,16 +109,19 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
 - A Codex harness supporting the required subagent reasoning efforts. The standard
-  workflow uses `xhigh` and `low` unless `--effort` overrides them; simple mode
-  uses the highest available effort unless overridden. A user-specified model or model family overrides the default
-  for every descendant except the reasoning roles forced onto `gpt-6-astra` by an
-  issue label whose name is exactly `astra`. Without an override, model selection
-  follows this order: `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` →
-  `gpt-5.6-terra` → `gpt-5.5`. If a model is unavailable, every
-  agent must use the next available model that supports the role's reasoning
-  effort and any requested fast mode. Model availability blocks the run only
-  when the list is exhausted. Delegates propagate this policy and report the
-  actual models used and any fallbacks.
+  workflow uses `xhigh` for analytical and verification roles and `medium` for
+  coordinators, implementation, and corrective edits unless `--effort` overrides
+  them; simple mode uses the highest available effort unless overridden.
+  At the start of each effort, honor `--model` if supplied. Otherwise select
+  `gpt-6-astra` if any member issue has an exact, case-sensitive `astra` label,
+  with no fallback to another family. Without either, resolve the first available
+  family supporting the required roles and execution mode in this order:
+  `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
+  Every role and subflow in that effort retains its selected family, including
+  tooling recovery and CI fixes. Preflight and shared triage honor `--model` or
+  use the default fallback chain. Delegates propagate the resolved family and
+  report its selection source, evidence, fallback reasons, models, and reasoning
+  efforts. Astra is never an automatic fallback.
 - A target repository with an `origin` remote. Default mode requires a clean
   local `main` that can be safely fast-forwarded to `origin/main`, with required
   checks and branch protections permitting rebase merging. Reduced modes use
@@ -127,7 +141,6 @@ The [skill](plugins/address-github-issues/skills/address-github-issues/SKILL.md)
 and [workflow](plugins/address-github-issues/skills/address-github-issues/references/workflow.md)
 define sequential issue processing, required delegation, and bounded retries.
 
-The skill's core workflow is broadly reusable across AI agents that support
-subagent delegation. Users can override the default OpenAI model preference with
-an exact model or model family supported by their harness; the reasoning effort
-policy still applies.
+The skill's core workflow requires a harness supporting subagent delegation and
+the resolved model family. `--effort` changes reasoning effort independently of
+the family selected for an effort.
