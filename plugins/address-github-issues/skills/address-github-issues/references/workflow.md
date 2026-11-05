@@ -68,6 +68,8 @@ Before fetching issue details:
 
 The preflight subagent inspects repository instructions, CI configuration, manifests, existing scripts, documentation, and artifact types. Its verification report must identify applicable automated checks or explicit manual review procedures, working directories, prerequisites, execution stage (local or CI), and success criteria, with supporting repository evidence. Distinguish baseline checks from final artifact verification and identify required CI checks. In reduced modes, use the current worktree for the baseline and identify PR-only checks as omitted by the delivery mode, not passed or local prerequisites. Verification commands must respect the selected mode's Git and GitHub write boundaries. Derive verification from the target repository; do not assume a particular language, build system, or test framework.
 
+Preflight must exercise the required tooling, not merely list commands: check runtime and package-manager availability, dependency installation and lockfile consistency, sandbox/store/cache write permissions, and applicable test, type-check, formatter, and reporting commands with small representative runs. Include mutation tooling only when required by the verification plan. Identify and resolve setup and tooling failures together before implementation, using the existing diagnosis/edit role boundaries; report exact commands, outcomes, and unresolved prerequisites. Do not defer predictable tooling failures to correction cycles.
+
 When verification procedures are undocumented, derive suitable checks from the artifacts and existing tooling, including manual review where appropriate. Missing automated tests alone do not block the run. If meaningful verification cannot be established or required tooling or other prerequisites are unavailable, report the blocker before issue processing; do not invent commands or treat unperformed checks as passing. Carry this report through the existing delegate-report flow.
 
 In default mode, the root repeats the safe fetch and fast-forward before each later effort because the previous rebase merge changes `main`. In reduced modes, pass the evolving current worktree and prior effort reports onward without synchronization or cleanup. Preserve pre-existing edits and staging; if the effort's changes cannot be safely separated from unrelated existing changes, report a blocker rather than including or overwriting them.
@@ -194,6 +196,8 @@ Spawn a fresh `gpt-6-astra-xhigh` planning subagent. Give it:
 
 Require a decision-complete plan covering scope, code or documentation changes, interfaces, edge cases, migration or compatibility needs, tests, acceptance criteria, and validation. The planner refines the verification report for the effort's artifacts and acceptance criteria, adding effort-specific checks and updating procedures when requirements change. The plan must identify how one grouped change satisfies each member issue separately. The coordinator may request clarification but must not invent missing technical decisions.
 
+Before implementation, exercise any effort-specific tooling not covered by preflight in the selected worktree. Include predictable dependency/lockfile refreshes caused by manifest or export changes in the plan, and perform them with those edits rather than discovering them in later review rounds.
+
 ### 5.5 Implement in the worktree
 
 Spawn a `gpt-6-astra-low` implementation subagent (`model=<selected-model>`, `reasoning_effort=low`) in the selected worktree. Give it the delivery mode, approved plan, and all supporting reports. Require it to:
@@ -212,13 +216,21 @@ The coordinator must not edit implementation files. If implementation reveals a 
 
 1. Collect the diff and implementation report. In reduced modes, distinguish this effort's delta from prior efforts and pre-existing changes, and assess regressions against the accumulated current state.
 2. Give them and the latest verification report to a `gpt-6-astra-xhigh` verification subagent to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
-3. Delegate any required edit to `gpt-6-astra-low`.
+3. Consolidate all findings into a grouped correction request for `gpt-6-astra-low`, following the correction rules below.
 4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. In default mode, run CI-only checks through section 5.8; their results gate merging. In reduced modes, report PR-only checks as omitted by the mode, never as passed.
 5. Confirm only intended changes were introduced by this effort, with earlier work and pre-existing edits preserved, and run `git diff --check`.
 
-Any unexpected result goes first to a `gpt-6-astra-xhigh` debugging subagent with raw evidence. Only after diagnosis may a `gpt-6-astra-low` subagent implement the prescribed fix. The coordinator never diagnoses the failure itself.
+Collect unexpected results from applicable checks that can run safely into one evidence bundle for a `gpt-6-astra-xhigh` debugging subagent. Only after consolidated diagnosis may a `gpt-6-astra-low` subagent implement the prescribed fixes. The coordinator never diagnoses failures itself.
 
-Allow at most five diagnose-fix-verify cycles for one effort across local validation and CI. After the fifth unsuccessful cycle, stop that effort and report the accumulated evidence. Do not stack speculative fixes or bypass checks.
+#### Correction cycles and tooling recovery
+
+Allow at most five substantive diagnose-fix-verify cycles per effort across local validation and CI, using one cumulative count. A cycle diagnoses the collected defects, applies the grouped fixes, and verifies the result; individual failed commands, test files, assertions, or agent handoffs are not separate cycles. After the fifth unsuccessful substantive cycle, stop the effort and report the accumulated evidence. Do not stack speculative fixes or bypass checks.
+
+Unexpected tooling failures must be addressed in **one grouped tooling-recovery round per effort, excluded from the five-cycle limit**. This covers setup and permission failures, dependency/lockfile snapshot refreshes, formatting errors, test-harness or fixture mechanics, and runner/reporting failures. Gather the failures, use one consolidated diagnosis handoff and one corrective-edit handoff, then rerun the affected checks. Preflight setup is also outside the substantive count. Keep each handoff concise under the skill's context handoff rule.
+
+**Do not fragment routine repairs into separate heavyweight debugging, planning, and review pipelines, or restart the full workflow for each tooling failure.** If tooling remains broken after the grouped recovery round, or another tooling failure requires a second round, stop and report the blocker; do not create unlimited exempt rounds or charge tooling repairs to the substantive limit. Existing thread-exhaustion and permission safeguards still apply.
+
+Failures exposing incorrect implementation behavior, consumer incompatibilities, or missing behavioral coverage remain substantive corrections, even when discovered by tests or mutation checks. Never relabel them as tooling to evade the limit. A mixed round counts as a substantive cycle and uses the tooling-recovery allowance if it also repairs tooling.
 
 In either reduced mode, an attempted effort that cannot complete after the permitted remediation stops further implementation in the shared worktree. Preserve earlier commits or uncommitted work and the unfinished changes; report previously validated efforts separately from the current, possibly failing state. Do not roll back the effort or continue implementing other issues. Issues skipped or blocked during triage without edits do not prevent other eligible efforts from running.
 
@@ -245,7 +257,7 @@ Default mode only. Reduced modes skip this entire section and perform no GitHub 
 
 1. Monitor every required pull-request check until it reaches a terminal state.
 2. Never merge while a required check is pending, skipped unexpectedly, cancelled, or failing.
-3. For any failure, collect the full check output and delegate diagnosis to `gpt-6-astra-xhigh`; delegate the resulting code change to `gpt-6-astra-low`; then validate, commit, rebase if needed, and push again.
+3. Collect full output from failed checks and follow the same grouped diagnosis, tooling-recovery allowance, and cumulative substantive cycle limit from section 5.6. Delegate diagnosis to `gpt-6-astra-xhigh` and the resulting edits to `gpt-6-astra-low`; then validate, commit, rebase if needed, and push again.
 4. Obtain the root's exclusive integration turn before the final fetch, rebase, validation, and merge sequence; retain it until the merge is confirmed or this attempt is abandoned. Confirm the branch remains based on the latest `origin/main`. If it advanced, rebase, rerun applicable verification, push with `--force-with-lease`, and wait for required checks on the updated head. Recheck the base immediately before merging; if external work advances `main`, repeat this sequence rather than merging stale validation.
 5. Merge only with GitHub's rebase-merge method. Do not squash, create a merge commit, bypass protections, or use administrator override.
 6. Verify the pull request state is merged, record the merge commit, and confirm the newly integrated `main` history is linear (no merge commits). Release the integration turn so the next coordinator can integrate against the updated base.
@@ -262,6 +274,7 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 - branch and worktree path;
 - changed behavior or documentation;
 - the latest verification report, including refinements, and results of automated checks, manual reviews, and required CI checks;
+- substantive correction cycles used out of five, with tooling failures and their single grouped recovery round reported separately and excluded from that count;
 - local commit ID for `--no-pr`, or pull request URL and merge commit in default mode; with `--no-commit`, identify the accumulated changeset in the current worktree;
 - confirmed final issue states;
 - any omitted delivery steps or PR-only checks, unfinished changes, deferred or newly discovered work.

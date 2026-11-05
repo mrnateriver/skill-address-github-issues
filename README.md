@@ -86,6 +86,12 @@ fix attempts, implementation stops with earlier work and unfinished changes
 preserved. Reduced modes leave GitHub issues open and report local validation
 separately from omitted PR-only checks and delivery steps.
 
+Both workflows exercise required tooling before implementation. Unexpected setup,
+dependency, test infrastructure, formatting, or reporting failures must be fixed
+in one grouped recovery round per effort, outside the five substantive correction
+cycles shared across local checks and CI. Separate heavyweight cycles for routine
+tooling repairs are forbidden; unresolved tooling after that round blocks delivery.
+
 ## Requirements
 
 - Git and authenticated GitHub read access (for example, GitHub CLI via
