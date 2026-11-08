@@ -51,29 +51,29 @@ Interpret `$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] 
 - A single selected issue may read referenced issues for blocker context, but it must not implement, close, group with, or otherwise expand into them.
 - Reject ambiguous or multiple explicit issue arguments instead of guessing.
 
-Default mode delivers through a fresh branch/worktree and a merged PR per effort. Both reduced modes use the invoking worktree throughout the run, perform only read operations against GitHub, and leave issues open. `--no-pr` creates one local commit per validated effort on the current branch, without pushing. `--no-commit` leaves all efforts in one accumulated changeset without commits, temporary commits, or stashes. Neither reduced mode creates or switches branches/worktrees, synchronizes with `main`, or rebases existing work.
+All modes require dedicated Git worktrees for preflight, implementation, fixes, and validation; never perform this work in the invoking checkout. Default mode delivers through a fresh branch/worktree and a merged PR per effort. `--no-pr` also uses a fresh branch/worktree per effort, then rebases and fast-forwards its validated commits into local `main` as specified in section 5.7. `--no-commit` uses one dedicated fresh branch/worktree for the entire run and leaves its accumulated changes there without updating `main`, commits, temporary commits, or stashes. Both reduced modes perform only read operations against GitHub and leave issues open.
 
-The root agent schedules efforts according to the triage report and the parallel execution rules below. Proven independent efforts must run through separate parallel coordinator flows; otherwise wait for the current coordinator to report before starting the next effort. A pre-approved multi-issue group counts as one effort.
+The root agent schedules efforts according to the triage report and the parallel execution rules below. In default and `--no-pr` modes, proven independent efforts must run through separate parallel coordinator flows; otherwise wait for the current coordinator to report before starting the next effort. A pre-approved multi-issue group counts as one effort.
 
 ## 2. Root agent: preflight
 
 Before fetching issue details:
 
-1. Resolve the repository root, `origin` URL, and invoking worktree. Record its starting branch, commit, staged/unstaged diffs, and untracked files so pre-existing changes remain distinguishable from the run's work. In default mode, also resolve the worktree holding local `main`.
+1. Resolve the repository root, `origin` URL, invoking worktree, local `main`, and any worktree holding it. Record the starting branch, commit, staged/unstaged diffs, and untracked files so pre-existing changes remain distinguishable from the run's work.
 2. Read the repository's complete `AGENTS.md` and any instructions it routes to for the affected area.
 3. Verify GitHub authentication and read access to the repository. Only default mode requires permission to push, create PRs, rebase-merge, and close issues.
-4. In default mode, inspect local `main`. If it is dirty, ahead of `origin/main`, diverged, or unavailable for a safe fast-forward, stop and report the exact state. In reduced modes, use the invoking worktree as it stands, including local commits and edits; `--no-pr` requires an existing current branch. Never stash, reset, discard, or overwrite user work.
-5. In default mode only, fetch `origin/main`, fast-forward local `main` with `--ff-only`, and verify local `main` equals `origin/main`. Reduced modes do not require an up-to-date local `main` or alter the invoking branch's relationship to its remote.
+4. Require local `main` as the worktree base in every mode. Default and `--no-pr` modes require a clean checkout holding `main` for integration; if needed, create a dedicated worktree holding `main`. Default mode also requires a safe fast-forward to `origin/main`; report a blocker if local `main` is ahead or diverged. Reduced modes may use local `main` with existing local commits without matching `origin/main`. Never stash, reset, discard, or overwrite user work, or copy pre-existing edits into new worktrees. If an effort requires those edits or commits from another branch, report that prerequisite instead of silently including them.
+5. In default mode only, acquire the repository-wide integration lock described below, fetch `origin/main`, fast-forward local `main` with `--ff-only`, verify equality, and release the lock. In every mode, create a dedicated preflight worktree on a fresh branch from local `main` before running checks or making edits. Use a unique run identifier in its branch and path. `--no-commit` retains this worktree for all efforts; other modes create separate effort worktrees in section 5.1. Verify any project-local worktree directory is ignored, or use a safe external directory.
 6. Resolve `<shared-model>` for repository-wide preflight and shared triage from `--model` when supplied, otherwise the default fallback chain. Defer each effort's label-based family selection until that effort starts; never apply one effort's labels to the whole run.
-7. Spawn a dedicated preflight subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the repository path, delivery mode, recorded starting state, repository instructions, and this workflow to determine the necessary artifact verification steps. Wait for its report before fetching issue details.
+7. Spawn a dedicated preflight subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the dedicated preflight worktree path, delivery mode, recorded starting state, repository instructions, and this workflow to determine the necessary artifact verification steps. Wait for its report before fetching issue details.
 
-The preflight subagent inspects repository instructions, CI configuration, manifests, existing scripts, documentation, and artifact types. Its verification report must identify applicable automated checks or explicit manual review procedures, working directories, prerequisites, execution stage (local or CI), and success criteria, with supporting repository evidence. Distinguish baseline checks from final artifact verification and identify required CI checks. In reduced modes, use the current worktree for the baseline and identify PR-only checks as omitted by the delivery mode, not passed or local prerequisites. Verification commands must respect the selected mode's Git and GitHub write boundaries. Derive verification from the target repository; do not assume a particular language, build system, or test framework.
+The preflight subagent inspects repository instructions, CI configuration, manifests, existing scripts, documentation, and artifact types in its dedicated worktree. Its verification report must identify applicable automated checks or explicit manual review procedures, working directories, prerequisites, execution stage (local or CI), and success criteria, with supporting repository evidence. Distinguish baseline checks from final artifact verification and identify required CI checks. In reduced modes, identify PR-only checks as omitted by the delivery mode, not passed or local prerequisites. Verification commands must respect the selected mode's Git and GitHub write boundaries. Derive verification from the target repository; do not assume a particular language, build system, or test framework.
 
 Preflight must exercise the required tooling, not merely list commands: check runtime and package-manager availability, dependency installation and lockfile consistency, sandbox/store/cache write permissions, and applicable test, type-check, formatter, and reporting commands with small representative runs. Include mutation tooling only when required by the verification plan. Identify and resolve setup and tooling failures together before implementation, using the existing diagnosis/edit role boundaries; report exact commands, outcomes, and unresolved prerequisites. Do not defer predictable tooling failures to correction cycles.
 
 When verification procedures are undocumented, derive suitable checks from the artifacts and existing tooling, including manual review where appropriate. Missing automated tests alone do not block the run. If meaningful verification cannot be established or required tooling or other prerequisites are unavailable, report the blocker before issue processing; do not invent commands or treat unperformed checks as passing. Carry this report through the existing delegate-report flow.
 
-In default mode, the root repeats the safe fetch and fast-forward before each later effort because the previous rebase merge changes `main`. In reduced modes, pass the evolving current worktree and prior effort reports onward without synchronization or cleanup. Preserve pre-existing edits and staging; if the effort's changes cannot be safely separated from unrelated existing changes, report a blocker rather than including or overwriting them.
+In default mode, the root repeats the locked safe fetch and fast-forward before each later effort because the previous rebase merge changes `main`. With `--no-pr`, each effort starts from the latest local `main`, including previously integrated prerequisites. With `--no-commit`, pass the evolving dedicated run worktree and prior effort reports onward without synchronization or cleanup. Preserve pre-existing edits and staging in their original checkout.
 
 ## 3. Root agent: fetch the issue inventory
 
@@ -94,7 +94,7 @@ Fetch only after the mode-specific preflight is complete and its verification re
 
 ## 4. Root agent: mandatory xhigh-reasoning triage
 
-Spawn one shared triage subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and repository path. Shared triage honors `--model` when supplied; otherwise it uses the default fallback chain. Apply issue-label selection separately at the start of each resulting effort when there is no override. In reduced modes, include the invoking worktree and recorded starting state. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
+Spawn one shared triage subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and dedicated preflight worktree path. Shared triage honors `--model` when supplied; otherwise it uses the default fallback chain. Apply issue-label selection separately at the start of each resulting effort when there is no override. In reduced modes, include the recorded starting state and local progress. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
 
 The triage subagent applies the human-involvement label rule in [Invocation modes](../SKILL.md#invocation-modes) to each in-scope issue using the inventory labels, including semantically equivalent labels. Record skipped issues and the relevant labels; exclude them from groups and executable efforts. A dependent issue remains blocked if a skipped prerequisite is unresolved. If the sole selected issue is skipped, report it without implementation or GitHub writes. Skipped issues do not prevent unrelated eligible efforts from proceeding.
 
@@ -126,7 +126,7 @@ Use an edge from prerequisite to dependent. Contract approved multi-issue groups
 
 This produces unblocked-to-most-blocked ordering with oldest-to-newest ordering as the deterministic tie-breaker.
 
-In reduced modes, the xhigh-reasoning subagent may mark a dependency ready once its prerequisite effort is successfully implemented and locally validated in the shared current worktree, even if the prerequisite issue remains open. Use prior effort reports and current artifacts as evidence; issue state alone does not settle local readiness. External blockers or prerequisites that genuinely require a merge or deployment remain blockers. Failed or unfinished effort changes never satisfy a dependency.
+In reduced modes, the xhigh-reasoning subagent may mark a dependency ready once its prerequisite is validated and fast-forwarded into local `main` with `--no-pr`, or validated in the dedicated run worktree with `--no-commit`, even if the prerequisite issue remains open. Use prior effort reports and current artifacts as evidence; issue state alone does not settle local readiness. External blockers or prerequisites that genuinely require remote integration or deployment remain blockers. Failed or unfinished effort changes never satisfy a dependency.
 
 ### Grouping rules
 
@@ -143,30 +143,30 @@ Shared labels, the same component, nearby files, or potential merge conflicts ar
 
 ### Parallel execution rules
 
-In default mode, when the triage report proves that dependency-ready efforts are completely unrelated, do not interfere in any way, and are completely safe to implement concurrently, the root **must** spawn their fresh coordinators in parallel. Each coordinator runs the full flow below, including implementation, verification, PR creation, and merge. Different issue numbers, disjoint files, or the absence of dependency edges alone do not prove independence. If evidence is missing, obtain triage clarification; do not assume safety.
+In default and `--no-pr` modes, when the triage report proves that dependency-ready efforts are completely unrelated, do not interfere in any way, and are completely safe to implement concurrently, the root **must** spawn their fresh coordinators in parallel. Each coordinator runs the full flow below through its mode's delivery boundary. Different issue numbers, disjoint files, or the absence of dependency edges alone do not prove independence. If evidence is missing, obtain triage clarification; do not assume safety.
 
-Use a separate branch and worktree per effort and isolate any mutable validation resources. The root serializes operations on shared local `main` and grants only one coordinator at a time permission to perform the final integration sequence in section 5.8. Other coordinators may continue independent work while awaiting their integration turn. Parallel implementation never permits non-linear `main` history: all created PRs must be rebase-merged, with no squash merges or merge commits.
+Use a separate branch and worktree per effort and isolate any mutable validation resources. The root grants only one coordinator at a time the final integration turn in section 5.7 (`--no-pr`) or 5.8 (default). Serialize all updates to local `main` across concurrent agents and separate runs with a repository-wide exclusive lock at `<git-common-dir>/address-github-issues-integration.lock`, using the repository's locking mechanism or an OS file lock. Resolve the shared Git directory with `git rev-parse --git-common-dir`; a per-worktree lock or an in-memory turn in one root is insufficient. Hold the lock through the final base read, rebase, conflict resolution, validation, and integration; release it on success or an abandoned attempt. Other worktrees may continue independent implementation while waiting. All created PRs must be rebase-merged and local `--no-pr` integration must use `--ff-only`, with no squash merges or merge commits on `main`.
 
-Use the triage ordering to launch parallel-safe efforts deterministically. An effort with prerequisites waits for their successful delivery. If new evidence invalidates independence, pause the affected flows and obtain revised triage before continuing them. Reduced modes remain sequential because they share the invoking worktree, index, and accumulated changes; do not create extra worktrees or change delivery mode to enable parallelism.
+Use the triage ordering to launch parallel-safe efforts deterministically. An effort with prerequisites waits for their successful delivery. If new evidence invalidates independence, pause the affected flows and obtain revised triage before continuing them. `--no-commit` efforts remain sequential within their dedicated run worktree because they share an index and accumulated changes; separate runs still use separate worktrees.
 
 ## 5. Root agent: process each effort
 
-At the start of each effort selected, grouped, and ordered by the triage report, the root resolves `<chosen-model>` through [Subagent model selection](../SKILL.md#subagent-model-selection): explicit `--model` first, then that effort's labels, otherwise the default fallback chain. It then spawns a **new** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`) with the resolved family, selection source and evidence, fallback reasons, repository path, delivery mode, raw inventory, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. Every descendant in sections 5.1–5.9 inherits that family without reselecting it. In reduced modes, also pass the invoking worktree, recorded starting state, and accumulated local progress. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator or its family choice for another effort and does not make technical decisions between efforts.
+At the start of each effort selected, grouped, and ordered by the triage report, the root resolves `<chosen-model>` through [Subagent model selection](../SKILL.md#subagent-model-selection): explicit `--model` first, then that effort's labels, otherwise the default fallback chain. It then spawns a **new** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`) with the resolved family, selection source and evidence, fallback reasons, repository and dedicated preflight worktree paths, delivery mode, raw inventory, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. Every descendant in sections 5.1–5.9 inherits that family without reselecting it. In reduced modes, also pass the recorded starting state and local progress: the latest integrated `main` tip for `--no-pr`, or the dedicated run worktree and accumulated changes for `--no-commit`. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator or its family choice for another effort and does not make technical decisions between efforts.
 
 The inventory and combined triage are the sole eligibility decision for the run; coordinators do not refresh issue or dependency state before starting. This deliberately accepts a TOCTOU risk: an issue may be closed, edited, or newly blocked after triage, so work can begin from stale GitHub state. Final validation, current-`main` rebasing, and issue-state reporting still apply, but they do not eliminate that risk.
 
 ### 5.1 Select the workspace and run the baseline
 
-In reduced modes, keep using the invoking worktree and current branch. Skip steps 1–4 below. Record the state before this effort, including prior efforts and pre-existing edits, so its own changes can be reviewed and, with `--no-pr`, committed separately. Never reset or clean the worktree between efforts.
+With `--no-commit`, keep using the dedicated run worktree created during preflight and skip steps 1–4 below. Record the state before this effort, including prior efforts, so its own changes can be reviewed separately. Never reset or clean that worktree between efforts.
 
-In default mode:
+In default and `--no-pr` modes:
 
 1. Create a fresh branch from the verified current `main`; never reuse an old issue branch.
-2. Use `issue-<number>-<short-slug>` for one issue and `issues-<lowest-number>-<next-number>-<short-slug>` for a group.
+2. Use `issue-<number>-<short-slug>-<run-id>` for one issue and `issues-<lowest-number>-<next-number>-<short-slug>-<run-id>` for a group, with a unique run identifier to avoid concurrent branch/path collisions.
 3. Create a dedicated Git worktree for that branch. Prefer a repository-native worktree mechanism when available; otherwise use an existing ignored `.worktrees/` directory or a safe external sibling directory.
 4. Verify a project-local worktree directory is ignored before using it. Do not add worktree contents to version control.
 
-In every mode, run applicable baseline checks from the verification and triage reports in the selected worktree before implementation, including every repository-required baseline check. Reduced modes check the evolving current state, including earlier validated changes, without requiring a clean worktree. Delegate any prescribed technical manual review to a subagent with `model=<chosen-model>` and `reasoning_effort=xhigh`.
+In every mode, run applicable baseline checks from the verification and triage reports in the selected dedicated worktree before implementation, including every repository-required baseline check. `--no-commit` checks the evolving run state, including earlier validated changes, without requiring a clean worktree. Delegate any prescribed technical manual review to a subagent with `model=<chosen-model>` and `reasoning_effort=xhigh`.
 
 If baseline validation fails, capture exact commands and complete output and delegate diagnosis to a subagent with `model=<chosen-model>` and `reasoning_effort=xhigh`. Do not let the coordinator diagnose or waive a red baseline. Proceed only if that subagent proves the failure is unrelated and the governing repository instructions permit proceeding; otherwise report the effort blocked.
 
@@ -205,7 +205,7 @@ Spawn an implementation subagent (`model=<chosen-model>`, `reasoning_effort=medi
 
 - read and obey repository and relevant skill instructions;
 - edit only within the approved scope;
-- in reduced modes, preserve earlier effort changes and pre-existing user edits in the current worktree;
+- preserve earlier effort changes in the dedicated `--no-commit` run worktree and leave pre-existing user edits in their original checkout untouched;
 - use test-driven development for behavior changes;
 - avoid unrelated refactors or speculative abstractions;
 - run focused checks while implementing;
@@ -215,7 +215,7 @@ The coordinator must not edit implementation files. If implementation reveals a 
 
 ### 5.6 Review and validate
 
-1. Collect the diff and implementation report. In reduced modes, distinguish this effort's delta from prior efforts and pre-existing changes, and assess regressions against the accumulated current state.
+1. Collect the diff and implementation report. With `--no-commit`, distinguish this effort's delta from prior efforts and assess regressions against the accumulated run state. With `--no-pr`, review the effort against its `main` base and validate again after the final rebase.
 2. Give them and the latest verification report to a verification subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
 3. Consolidate all findings into a grouped correction request for a corrective-edit subagent (`model=<chosen-model>`, `reasoning_effort=medium`), following the correction rules below.
 4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. In default mode, run CI-only checks through section 5.8; their results gate merging. In reduced modes, report PR-only checks as omitted by the mode, never as passed.
@@ -233,14 +233,22 @@ Unexpected tooling failures must be addressed in **one grouped tooling-recovery 
 
 Failures exposing incorrect implementation behavior, consumer incompatibilities, or missing behavioral coverage remain substantive corrections, even when discovered by tests or mutation checks. Never relabel them as tooling to evade the limit. A mixed round counts as a substantive cycle and uses the tooling-recovery allowance if it also repairs tooling.
 
-In either reduced mode, an attempted effort that cannot complete after the permitted remediation stops further implementation in the shared worktree. Preserve earlier commits or uncommitted work and the unfinished changes; report previously validated efforts separately from the current, possibly failing state. Do not roll back the effort or continue implementing other issues. Issues skipped or blocked during triage without edits do not prevent other eligible efforts from running.
+In either reduced mode, an attempted effort that cannot complete after the permitted remediation stops further implementation in the run. Preserve earlier integrated commits or accumulated uncommitted work and unfinished changes in their worktrees; report previously validated efforts separately from the failed effort. Do not integrate an unfinished `--no-pr` effort, roll back earlier work, or start further issues. Stop active parallel efforts at a safe boundary and preserve their work. Issues skipped or blocked during triage without edits do not prevent other eligible efforts from running.
 
 ### 5.7 Deliver according to the selected mode
 
-- `--no-commit`: after successful local validation, leave every effort's changes in the same accumulated current changeset. Create no commits, temporary commits, or stashes. Proceed directly to section 5.9.
-- `--no-pr`: after successful local validation, create one commit for this issue or approved group on the existing current branch, with an imperative, non-Conventional-Commit message following repository conventions. The commit message must include `Closes #<issue number>` for every original GitHub issue delivered by the effort. Commit only this effort's changes, preserving unrelated staged and unstaged edits. Do not blindly commit the existing index; if overlapping changes cannot be safely separated, report a blocker. Do not push, rebase, or create a PR. Proceed directly to section 5.9.
+- `--no-commit`: after successful local validation, leave every effort's changes in the accumulated changeset in the dedicated run worktree. Create no commits, temporary commits, or stashes, and do not update `main`. Proceed directly to section 5.9.
+- `--no-pr`: after successful local validation, create one commit for this issue or approved group on its dedicated worktree branch, with an imperative, non-Conventional-Commit message following repository conventions. Include `Closes #<issue number>` for every original GitHub issue delivered by the effort. Commit only this effort's changes. Complete the local integration sequence below before reporting success. Do not push or create a PR.
 
-The remaining steps in this section apply only to default mode:
+#### Local integration with `--no-pr`
+
+1. Obtain the root's exclusive integration turn and the repository-wide integration lock. Verify the worktree holding `main` is clean and record its current tip as the integration base. If it is dirty, preserve all work and report the exact blocker; never stash or reset it.
+2. In the effort's worktree, rebase its new commits onto that current local `main` tip. Concurrent progress is expected: resolve rebase conflicts rather than treating divergence alone as a blocker. An xhigh-reasoning debugging subagent diagnoses the correct resolution and a medium-reasoning corrective-edit subagent applies it, both using `<chosen-model>`; the simple workflow's sole subagent performs both roles itself. Preserve both the effort's intent and concurrent changes.
+3. Rerun applicable verification from the latest report on the rebased result, including any conflict resolution. Follow section 5.6 for failures and bounded correction cycles; never integrate failing or unfinished work. Keep fixes in this effort's commit. Require `git rev-list --merges <integration-base>..HEAD` to return no commits.
+4. Recheck that local `main` still equals the integration base and its checkout is clean. If another writer advanced it despite the lock, repeat the rebase and verification against the new tip. In the worktree holding `main`, run `git merge --ff-only <effort-branch>`. Never fall back to a merge commit, reset, or force-update of `main`.
+5. Verify local `main` equals the validated effort tip and the newly integrated range contains no merge commits. Record the resulting commit IDs and `main` tip, then release the lock and integration turn. A failed fast-forward requires another base read, rebase, and verification; it is not permission to overwrite concurrent work. Proceed to section 5.9 only after successful integration, or report the preserved worktree and blocker.
+
+#### Pull-request delivery (default)
 
 1. Commit all validated changes with an imperative, non-Conventional-Commit message that follows repository conventions.
 2. Fetch `origin/main` again and rebase the issue branch onto it.
@@ -259,16 +267,16 @@ Default mode only. Reduced modes skip this entire section and perform no GitHub 
 1. Monitor every required pull-request check until it reaches a terminal state.
 2. Never merge while a required check is pending, skipped unexpectedly, cancelled, or failing.
 3. Collect full output from failed checks and follow the same grouped diagnosis, tooling-recovery allowance, and cumulative substantive cycle limit from section 5.6. Delegate diagnosis with `model=<chosen-model>`, `reasoning_effort=xhigh` and the resulting edits with `model=<chosen-model>`, `reasoning_effort=medium`; then validate, commit, rebase if needed, and push again.
-4. Obtain the root's exclusive integration turn before the final fetch, rebase, validation, and merge sequence; retain it until the merge is confirmed or this attempt is abandoned. Confirm the branch remains based on the latest `origin/main`. If it advanced, rebase, rerun applicable verification, push with `--force-with-lease`, and wait for required checks on the updated head. Recheck the base immediately before merging; if external work advances `main`, repeat this sequence rather than merging stale validation.
+4. Obtain the root's exclusive integration turn and repository-wide integration lock before the final fetch, rebase, validation, and merge sequence; retain them until the merge is confirmed or this attempt is abandoned. Confirm the branch remains based on the latest `origin/main`. If it advanced, rebase, rerun applicable verification, push with `--force-with-lease`, and wait for required checks on the updated head. Recheck the base immediately before merging; if external work advances `main`, repeat this sequence rather than merging stale validation.
 5. Merge only with GitHub's rebase-merge method. Do not squash, create a merge commit, bypass protections, or use administrator override.
-6. Verify the pull request state is merged, record the merge commit, and confirm the newly integrated `main` history is linear (no merge commits). Release the integration turn so the next coordinator can integrate against the updated base.
+6. Verify the pull request state is merged, record the merge commit, and confirm the newly integrated `main` history is linear (no merge commits). Fetch and safely fast-forward local `main` to the merged remote tip with `--ff-only`; never overwrite concurrent local commits. Release the lock and integration turn so the next coordinator can integrate against the updated base.
 7. Verify every delivered issue is closed. If a correct `Closes` keyword did not close an issue, close it with a comment linking the merged pull request.
 
 ### 5.9 Report the effort
 
 The coordinator reports after each effort reaches its delivery boundary, or when it is skipped or blocked:
 
-- delivery mode and outcome: uncommitted, committed locally, merged, skipped, or blocked;
+- delivery mode and outcome: uncommitted, fast-forwarded into local `main`, merged through a PR, skipped, or blocked;
 - issue numbers and titles;
 - whether issues were grouped and the triage justification;
 - resolved model family, selection source (override, labels, or default), evidence and initial fallback reasons, plus research, triage, debugging, planning, implementation, and verification delegates used, with actual models, reasoning efforts, and any within-family substitutions;
@@ -276,11 +284,11 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 - changed behavior or documentation;
 - the latest verification report, including refinements, and results of automated checks, manual reviews, and required CI checks;
 - substantive correction cycles used out of five, with tooling failures and their single grouped recovery round reported separately and excluded from that count;
-- local commit ID for `--no-pr`, or pull request URL and merge commit in default mode; with `--no-commit`, identify the accumulated changeset in the current worktree;
+- integrated commit IDs and resulting local `main` tip for `--no-pr`, or pull request URL and merge commit in default mode; with `--no-commit`, identify the accumulated changeset in the dedicated run worktree;
 - confirmed final issue states;
 - any omitted delivery steps or PR-only checks, unfinished changes, deferred or newly discovered work.
 
-The root may start parallel-safe efforts without waiting for peer reports. Before starting dependent or sequential efforts, wait for the necessary reports; serialize safe fast-forwards of local `main` in default mode. In reduced modes, continue in the same worktree with earlier work intact unless an attempted effort failed and stopped the shared run.
+The root may start parallel-safe efforts without waiting for peer reports in default and `--no-pr` modes. Before starting dependent or sequential efforts, wait for the necessary delivery reports. Serialize all updates to local `main` across runs. With `--no-commit`, continue in the dedicated run worktree with earlier work intact unless an attempted effort failed and stopped the run.
 
 ## 6. Root agent: finish the run
 
@@ -289,12 +297,12 @@ After all executable efforts are reported, the root agent returns one final orde
 - the initial inventory snapshot and triage order;
 - delivery mode, invoking worktree, and starting branch/commit;
 - every grouping decision and justification;
-- outcomes at the selected delivery boundary: accumulated uncommitted changes, local commits per effort, or merged efforts with pull requests and merge commits;
+- outcomes at the selected delivery boundary: accumulated uncommitted changes in the dedicated run worktree, local commits per effort fast-forwarded into `main`, or merged efforts with pull requests and merge commits;
 - skipped issues and why;
 - blocked issues, their unresolved dependencies, and evidence;
 - issues opened after the snapshot, without processing them;
 - validation results, omitted delivery steps, and unfinished changes;
 - which efforts ran in parallel, the triage evidence establishing their independence, and which ran sequentially;
-- confirmation that integration was serialized, all created PRs were rebase-merged, and resulting `main` history remained linear, or that the reduced mode performed no remote writes.
+- confirmation of dedicated worktree isolation in every mode; serialized integration across concurrent agents and runs, with rebase-merged PRs or local `--ff-only` integration and no new merge commits on `main`; no remote writes in reduced modes and no `main` update with `--no-commit`.
 
-Distinguish completion of the requested local delivery from resolution of a GitHub issue: uncommitted and locally committed outcomes leave issues open and are not merged resolutions. Never claim a blocked or unchecked effort succeeded. Do not delete worktrees or branches unless the user or repository workflow explicitly requests cleanup.
+Distinguish completion of the requested local delivery from resolution of a GitHub issue: uncommitted and locally fast-forwarded outcomes leave GitHub issues open. Never claim a blocked, unchecked, or unintegrated `--no-pr` effort succeeded. Do not delete worktrees or branches unless the user or repository workflow explicitly requests cleanup.

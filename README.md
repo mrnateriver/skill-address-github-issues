@@ -2,8 +2,9 @@
 
 A Codex plugin that packages the Address GitHub Issues skill. It inventories and
 triages issues, orders dependencies, and implements each issue or approved group.
-By default, it delivers through isolated worktrees and rebase-merged pull requests;
-optional flags keep the work in the current worktree.
+All modes work in dedicated Git worktrees. By default, delivery uses rebase-merged
+pull requests; optional flags deliver local fast-forwards to `main` or uncommitted
+changes in a dedicated worktree.
 
 ## Install from GitHub
 
@@ -48,8 +49,8 @@ $address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] 
 | Mode | Workspace | Commits | Remote delivery |
 |---|---|---|---|
 | Default | Fresh branch and worktree per issue or approved group | Yes | Push, PR, checks, rebase-merge, issue closure |
-| `--no-pr` | Current worktree and branch for the entire run | One per validated issue or approved group | None |
-| `--no-commit` | Current worktree for the entire run | None; all changes accumulate in one changeset | None |
+| `--no-pr` | Fresh branch and worktree per issue or approved group | One per validated issue or approved group; fast-forward local `main` | None |
+| `--no-commit` | Dedicated fresh branch and worktree for the entire run | None; all changes accumulate in one changeset | None |
 
 For example, prepare all open issues as uncommitted changes, or commit one issue
 locally:
@@ -88,14 +89,20 @@ before GitHub access. For example:
 $address-github-issues 123 --model sol-6.1 --effort high --no-pr
 ```
 
-Both reduced modes retain the current branch and worktree without creating new
-ones or synchronizing or rebasing against `main`. Efforts run sequentially, and
-later issues can use earlier validated local changes.
-Pre-existing edits are preserved and unrelated changes are excluded from commits;
-unsafe overlaps are reported as blockers. If an attempted effort exhausts its
-fix attempts, implementation stops with earlier work and unfinished changes
-preserved. Reduced modes leave GitHub issues open and report local validation
-separately from omitted PR-only checks and delivery steps.
+Every mode uses dedicated worktrees for preflight, implementation, fixes, and
+validation, preserving pre-existing edits in the invoking checkout. `--no-pr`
+supports independent efforts in parallel, each in its own branch and worktree.
+Before delivery, agents serialize integration across concurrent agents and runs,
+rebase onto the latest local `main`, resolve conflicts, rerun applicable checks,
+and fast-forward `main` with `--ff-only`. No merge commits are created on `main`.
+Dependent efforts start from `main` after their prerequisites are integrated.
+
+`--no-commit` keeps efforts sequential in one dedicated run worktree, where later
+issues can use earlier validated changes. It leaves those changes uncommitted
+and does not update `main`. If an attempted effort exhausts its fix attempts in
+either reduced mode, implementation stops with earlier work and unfinished
+changes preserved. Reduced modes leave GitHub issues open and report local
+validation separately from omitted PR-only checks and delivery steps.
 
 Both workflows exercise required tooling before implementation. Unexpected setup,
 dependency, test infrastructure, formatting, or reporting failures must be fixed
@@ -122,11 +129,13 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
   use the default fallback chain. Delegates propagate the resolved family and
   report its selection source, evidence, fallback reasons, models, and reasoning
   efforts. Astra is never an automatic fallback.
-- A target repository with an `origin` remote. Default mode requires a clean
-  local `main` that can be safely fast-forwarded to `origin/main`, with required
-  checks and branch protections permitting rebase merging. Reduced modes use
-  the current worktree, including existing local commits and edits; `--no-pr`
-  requires an existing current branch.
+- A target repository with an `origin` remote and local `main` as the worktree
+  base in every mode. Default mode requires a clean local `main` that can be
+  safely fast-forwarded to `origin/main`, with required checks and branch
+  protections permitting rebase merging. `--no-pr` requires a clean checkout
+  holding local `main` for fast-forward integration, but does not require it to
+  match `origin/main`. `--no-commit` never updates `main`. Pre-existing edits
+  remain in their original checkout; they are not copied into run worktrees.
 - The tools and environment needed to verify the target repository's artifacts.
   In the standard workflow, before issue inventory and processing, a preflight delegate
   determines verification steps from repository instructions, CI, manifests,
