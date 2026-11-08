@@ -5,7 +5,7 @@ description: Inventory, triage, order, group, and implement a repository's GitHu
 
 # Address GitHub Issues
 
-By default, the invoking root agent delegates verification discovery and issue triage, then runs each approved issue or grouped effort through its own fresh coordinator. In `--simple` mode, the root handles inventory and scheduling and spawns one implementation subagent per effort.
+By default, the invoking root agent delegates verification discovery and issue triage, then runs each approved issue or grouped effort through its own fresh coordinator. In `--simple` mode, the agent receiving the invocation immediately performs every step in the current session without spawning any subagents, including a root or coordinator wrapper.
 
 ## Invocation modes
 
@@ -14,9 +14,9 @@ By default, the invoking root agent delegates verification discovery and issue t
 - No issue argument: process a snapshot of every open issue in the current repository, including when only flags are supplied.
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
 - Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
-- `--simple` uses the separate [simple workflow](references/simple.md) with exactly one subagent per issue or group and no other subagents. It works with every delivery mode.
-- `--effort` overrides the reasoning effort of every subagent in either workflow. Accept one of `max`, `xhigh`, `high`, `medium`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. The requested effort is exact: use a compatible model under the model-selection policy or report a blocker; do not silently lower it.
-- `--model` overrides model-family selection for every subagent in either workflow, including preflight and shared triage. Accept exactly one family alias from the table below; reject missing, invalid, or repeated values before accessing GitHub. It takes precedence over issue labels and automatic fallbacks, and combines with every delivery mode and `--effort`.
+- `--simple` uses the separate [simple workflow](references/simple.md): all steps run directly in the current session, with no subagents. It works with every delivery mode and still requires dedicated worktrees.
+- `--effort` overrides the reasoning effort of every subagent in the standard workflow. Accept one of `max`, `xhigh`, `high`, `medium`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. The requested effort is exact: use a compatible model under the model-selection policy or report a blocker; do not silently lower it. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
+- `--model` overrides model-family selection for every subagent in the standard workflow, including preflight and shared triage. Accept exactly one family alias from the table below; reject missing, invalid, or repeated values before accessing GitHub. It takes precedence over issue labels and automatic fallbacks, and combines with every delivery mode and `--effort`. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
 
 During triage, skip any issue whose labels indicate that human involvement is required, including `human`, `needs-human`, `requires-human`, and labels with the same meaning. This applies in both invocation modes. Report the issue and label; do not group, implement, or close it. Treat an unresolved skipped prerequisite as a blocker for dependent issues.
 
@@ -32,7 +32,7 @@ All work, including preflight, implementation, fixes, and validation, must happe
 
 ## Subagent model selection
 
-At the start of each executable effort, before spawning its coordinator or simple-mode subagent, the root resolves one model family in this precedence order:
+This section applies only to the standard workflow. `--simple` retains the current session's model and reasoning effort without model selection or delegation. At the start of each executable effort, before spawning its coordinator, the root resolves one model family in this precedence order:
 
 1. If `--model` is supplied, use its exact family from the table below, regardless of issue labels. If unavailable or incompatible, report a blocker without falling back to another family.
 2. Otherwise, if any member issue in that individual or approved grouped effort has a label whose name is exactly `astra`, use `gpt-6-astra`. If unavailable or incompatible, report a blocker without falling back to another family.
@@ -56,11 +56,9 @@ Resolve availability from the harness catalog or explicit model/effort errors. B
 
 In the standard workflow, use `xhigh` reasoning for analytical and verification roles and `medium` for coordinators, implementation, and corrective edits. Supply the actual model identifier and reasoning effort as separate spawn arguments. `--effort` replaces every role's reasoning effort with the exact requested value without changing the selected family or role boundaries.
 
-In `--simple` mode without `--effort`, use the chosen model's highest supported effort in the order `max`, `xhigh`, `high`, `medium`, `low`. Do not skip an available family in the chain merely to obtain a higher effort. Report the family choice and its source, actual model, reasoning effort, and any fallback or within-family substitution.
-
 ## Mandatory delegation
 
-This section's role and delegation requirements apply to the standard workflow. For `--simple`, follow [simple.md](references/simple.md) instead; the context handoff rule immediately below still applies.
+This section's role, delegation, and context handoff requirements apply only to the standard workflow. For `--simple`, follow [simple.md](references/simple.md) and perform every role yourself without spawning agents or creating handoff files.
 
 Treat every subagent as receiving none of its parent's conversation or working context, regardless of harness inheritance settings, and assume every spawn task has a strict input-size limit. Send only short, self-contained instructions directly. For every other handoff, first write the complete required context to an untracked temporary file, then spawn the subagent with the file's absolute path and an instruction to read it completely before acting. Include all required raw data, reports, decisions, repository and worktree state, and source paths in that file; never rely on inherited context or defer missing context until after the spawn. Keep the file available until the subagent reports, and apply this rule recursively to every descendant.
 
@@ -81,13 +79,15 @@ Parallel implementation must still produce linear `main` history. Serialize inte
 
 ## Execution mode and thread limits
 
+This section applies to the standard workflow's subagents. `--simple` uses the existing session and spawns none.
+
 If the invoking root agent requests **FAST MODE subagents**, every subagent in the run must use fast mode, recursively: preflight, triage, coordinators, research, debugging, planning, implementation, verification, and remediation. Every agent must propagate the requirement to its children and must never silently fall back to normal mode. Resolve a family supporting fast mode through the model-selection policy before starting; if none is eligible or the resolved family later becomes unusable, stop and report the affected stage or effort as blocked.
 
 If any agent hits the harness's subagent thread limit, it must stop immediately, create the persistent handover artifact specified in [references/workflow.md](references/workflow.md), and request that the human restart the harness to clean up sessions. It must not continue locally, reuse an old delegate, substitute a model, or attempt further issue or GitHub work.
 
 ## Required procedure
 
-For `--simple`, follow [references/simple.md](references/simple.md). Otherwise, the root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In all-open mode, the root agent inventories all open issues, delegates triage with `model=<shared-model>` and `reasoning_effort=xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. With `--no-pr`, dependent efforts start from `main` after their prerequisites have been fast-forwarded into it. With `--no-commit`, later efforts use validated local prerequisites in the dedicated run worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
+For `--simple`, follow [references/simple.md](references/simple.md). Otherwise, the root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In standard all-open mode, the root agent inventories all open issues, delegates triage with `model=<shared-model>` and `reasoning_effort=xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. With `--no-pr`, dependent efforts start from `main` after their prerequisites have been fast-forwarded into it. With `--no-commit`, later efforts use validated local prerequisites in the dedicated run worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
 
 In both workflows, identify tooling failures before implementation through executable preflight checks. Unexpected tooling failures belong in one grouped recovery round per effort, excluded from the five substantive correction cycles. Never fragment setup, test infrastructure, or formatting fixes into separate heavyweight cycles. Apply [Correction cycles and tooling recovery](references/workflow.md#correction-cycles-and-tooling-recovery) across local validation and CI.
 

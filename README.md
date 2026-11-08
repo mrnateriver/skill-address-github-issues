@@ -64,22 +64,25 @@ Flags may precede or follow the issue argument. `--no-commit` implies `--no-pr`
 and takes precedence if both are supplied. Flags without an issue select all
 open issues; unknown flags and multiple issue targets are rejected.
 
-`--simple` lets the root handle inventory and scheduling, then uses one subagent
-per issue or approved group to investigate, implement, verify, and deliver it.
-It can be combined with either reduced delivery mode. By default that subagent
-uses the highest supported effort on the selected model: `max`, then `xhigh`,
-`high`, `medium`, or `low`. For example:
+`--simple` starts every step directly in the current agent's existing session:
+preflight, inventory, triage, investigation, implementation, verification, and
+delivery. It spawns no subagents, including a root or coordinator wrapper, and
+works with every delivery mode. Work still happens in dedicated Git worktrees.
+It keeps the current session's model and reasoning effort; `--model` and
+`--effort` are validated but do not reconfigure the session, and this is reported
+when those flags are supplied. For example:
 
 ```text
-$address-github-issues 123 --simple --no-pr --effort high
+$address-github-issues 123 --simple --no-pr
 ```
 
-`--effort` sets the exact reasoning effort for every subagent in either workflow.
-If no eligible model supports it, the run reports a blocker rather than silently
-lowering the effort. Invalid, missing, or repeated effort values are rejected.
+In the standard workflow, `--effort` sets the exact reasoning effort for every
+subagent. If no eligible model supports it, the run reports a blocker rather than
+silently lowering the effort. Invalid, missing, or repeated effort values are rejected.
 
-`--model` explicitly overrides the family for every subagent, including preflight
-and shared triage, and takes precedence over labels and automatic fallbacks.
+In the standard workflow, `--model` overrides the family for every subagent,
+including preflight and shared triage, and takes precedence over labels and
+automatic fallbacks.
 Accepted values are `astra`, `sol-6.1`, `terra-6.1`, `luna-6.1`, `sol-5.6`,
 `terra-5.6`, and `luna-5.6`. An unavailable or incompatible explicit family blocks
 the run rather than falling back. Invalid, missing, or repeated values are rejected
@@ -115,10 +118,10 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
 - Git and authenticated GitHub read access (for example, GitHub CLI via
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
-- A Codex harness supporting the required subagent reasoning efforts. The standard
-  workflow uses `xhigh` for analytical and verification roles and `medium` for
-  coordinators, implementation, and corrective edits unless `--effort` overrides
-  them; simple mode uses the highest available effort unless overridden.
+- For the standard workflow, a Codex harness supporting the required subagent
+  reasoning efforts. It uses `xhigh` for analytical and verification roles and
+  `medium` for coordinators, implementation, and corrective edits unless `--effort`
+  overrides them.
   At the start of each effort, honor `--model` if supplied. Otherwise select
   `gpt-6-astra` if any member issue has an exact, case-sensitive `astra` label,
   with no fallback to another family. Without either, resolve the first available
@@ -128,7 +131,8 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
   tooling recovery and CI fixes. Preflight and shared triage honor `--model` or
   use the default fallback chain. Delegates propagate the resolved family and
   report its selection source, evidence, fallback reasons, models, and reasoning
-  efforts. Astra is never an automatic fallback.
+  efforts. Astra is never an automatic fallback. Simple mode uses the current
+  session without delegation or model selection.
 - A target repository with an `origin` remote and local `main` as the worktree
   base in every mode. Default mode requires a clean local `main` that can be
   safely fast-forwarded to `origin/main`, with required checks and branch
@@ -143,13 +147,14 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
   and final verification, with effort-specific refinements during planning.
   Checks may be automated or explicit manual reviews. Missing automated tests
   alone are not a blocker, but unavailable required checks or an inability to
-  establish meaningful verification must be reported. In simple mode the root
-  determines these verification steps without a separate delegate.
+  establish meaningful verification must be reported. In simple mode the current
+  agent determines these verification steps directly.
 
 The [skill](plugins/address-github-issues/skills/address-github-issues/SKILL.md)
 and [workflow](plugins/address-github-issues/skills/address-github-issues/references/workflow.md)
-define sequential issue processing, required delegation, and bounded retries.
+define issue processing, standard-workflow delegation, and bounded retries.
 
-The skill's core workflow requires a harness supporting subagent delegation and
-the resolved model family. `--effort` changes reasoning effort independently of
-the family selected for an effort.
+The standard workflow requires a harness supporting subagent delegation and
+the resolved model family. `--effort` changes subagent reasoning effort
+independently of the family selected for an effort. Simple mode runs in the
+current session without these delegation requirements.
