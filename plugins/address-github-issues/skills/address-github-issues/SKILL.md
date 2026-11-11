@@ -1,6 +1,6 @@
 ---
 name: address-github-issues
-description: Inventory, triage, order, group, and implement a repository's GitHub issues in isolated worktrees, delivering uncommitted changes, local fast-forwards to main, or rebase-merged pull requests. Use when asked to address all open issues or one specified issue; do not use for issue summaries or metadata-only edits.
+description: Inventory, triage, order, group, and implement a repository's GitHub issues in isolated worktrees, delivering uncommitted changes, local fast-forwards to main, or rebase-merged pull requests. Use when asked to address all open issues, open issues with a specified label, or one specified issue; do not use for issue summaries or metadata-only edits.
 ---
 
 # Address GitHub Issues
@@ -9,11 +9,12 @@ By default, the invoking root agent delegates verification discovery and issue t
 
 ## Invocation modes
 
-`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]`
+`$address-github-issues [issue-number-or-url | --label <label>] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]`
 
-- No issue argument: process a snapshot of every open issue in the current repository, including when only flags are supplied.
+- No issue or label argument: process a snapshot of every open issue in the current repository, including when only other flags are supplied.
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
-- Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
+- Specific GitHub issue label (`--label <label>` or a single exact label specified in the user's invocation arguments): fetch and process only open issues carrying that exact label (literal, case-sensitive match); filter out every issue that does not have that exact label. Referenced non-matching issues may be inspected solely for blocker context and remain out of grouping, implementation, and closure scope. All other processing rules apply unchanged.
+- Flags may precede or follow the target argument. Reject unknown flags, missing/empty or repeated `--label` values, multiple labels, more than one issue argument, or combining a label filter with an explicit issue argument before accessing GitHub.
 - `--simple` uses the separate [simple workflow](references/simple.md): all steps run directly in the current session, with no subagents. It works with every delivery mode and still requires dedicated worktrees.
 - `--effort` overrides the reasoning effort of every subagent in the standard workflow. Accept one of `max`, `xhigh`, `high`, `medium`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. When `--effort` is explicitly supplied by the user, apply any explicit provider-tier policy cap (see [Provider model tiers](#provider-model-tiers)) and require an eligible model supporting the resulting effort; fail with a blocker if unsupported rather than clamping into a narrower model range. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
 - `--model` overrides model-family tier selection for every subagent in the standard workflow, including preflight and shared triage. Accept one of `top`, `high`, `middle`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. Because it is explicitly specified by the user, it takes precedence over issue labels and automatic fallbacks and fails with a blocker if unavailable, combining with every delivery mode and `--effort`. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
@@ -101,7 +102,7 @@ If any agent hits the harness's subagent thread limit, it must stop immediately,
 
 ## Required procedure
 
-For `--simple`, follow [references/simple.md](references/simple.md). Otherwise, the root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In standard all-open mode, the root agent inventories all open issues, delegates triage with `model=<shared-model>` and `reasoning_effort=xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. With `--no-pr`, dependent efforts start from `main` after their prerequisites have been fast-forwarded into it. With `--no-commit`, later efforts use validated local prerequisites in the dedicated run worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
+For `--simple`, follow [references/simple.md](references/simple.md). Otherwise, the root agent and every effort coordinator must follow [references/workflow.md](references/workflow.md) for the selected delivery mode. In standard all-open or label-filtered mode, the root agent inventories the matching open issues, delegates triage with `model=<shared-model>` and `reasoning_effort=xhigh`, and uses its decision-complete report to sequence one fresh coordinator per effort. A grouped effort is one implementation and, in default mode, one branch, worktree, pull request, and merge; grouping is not parallel execution. With `--no-pr`, dependent efforts start from `main` after their prerequisites have been fast-forwarded into it. With `--no-commit`, later efforts use validated local prerequisites in the dedicated run worktree. In either reduced mode, if an attempted effort cannot complete after the allowed remediation, stop further implementation and preserve earlier work and unfinished changes.
 
 In both workflows, identify tooling failures before implementation through executable preflight checks. Unexpected tooling failures belong in one grouped recovery round per effort, excluded from the five substantive correction cycles. Never fragment setup, test infrastructure, or formatting fixes into separate heavyweight cycles. Apply [Correction cycles and tooling recovery](references/workflow.md#correction-cycles-and-tooling-recovery) across local validation and CI.
 

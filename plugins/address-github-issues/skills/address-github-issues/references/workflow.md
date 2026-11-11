@@ -41,14 +41,15 @@ Do not include credentials or other secrets. After writing the artifact, report 
 
 ## 1. Root agent: resolve scope and delivery mode
 
-Interpret `$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]` before accessing GitHub, using the flag validation in [Invocation modes](../SKILL.md#invocation-modes):
+Interpret `$address-github-issues [issue-number-or-url | --label <label>] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]` before accessing GitHub, using the flag validation in [Invocation modes](../SKILL.md#invocation-modes):
 
-- Parse flags independently of the optional issue target, in either order. `--no-commit` implies `--no-pr` and takes precedence when both are present. Reject unknown flags.
+- Parse flags independently of the optional target, in either order. `--no-commit` implies `--no-pr` and takes precedence when both are present. Reject unknown flags.
 - Validate `--model` against the exact model-family tiers (`top`, `high`, `middle`, `low`) in the skill and reject missing, invalid, or repeated values before GitHub access. Propagate it and any `--effort` override to every delegate.
-- No issue argument selects all issues that are open when the inventory is taken, even when flags are supplied. This is a finite snapshot; issues opened later are not added to the active run.
+- No issue or label argument selects all issues that are open when the inventory is taken, even when other flags are supplied. This is a finite snapshot; issues opened later are not added to the active run.
+- A single target GitHub issue label (supplied via `--label <label>` or an unambiguous natural-language label specification in the invocation arguments) selects only open issues carrying that exact label (literal, case-sensitive match), filtering out all issues without that label. Reject missing/empty or repeated `--label` values, multiple labels, or combining a label filter with an explicit issue target before GitHub access.
 - A decimal number, `#number`, or full GitHub issue URL selects exactly one issue.
 - For a URL, verify that its owner and repository match the current checkout's `origin`. Stop on a mismatch.
-- A single selected issue may read referenced issues for blocker context, but it must not implement, close, group with, or otherwise expand into them.
+- A single selected issue (or label-filtered set) may read referenced issues for blocker context, but it must not implement, close, group with, or otherwise expand into non-selected issues.
 - Reject ambiguous or multiple explicit issue arguments instead of guessing.
 
 All modes require dedicated Git worktrees for preflight, implementation, fixes, and validation; never perform this work in the invoking checkout. Default mode delivers through a fresh branch/worktree and a merged PR per effort. `--no-pr` also uses a fresh branch/worktree per effort, then rebases and fast-forwards its validated commits into local `main` as specified in section 5.7. `--no-commit` uses one dedicated fresh branch/worktree for the entire run and leaves its accumulated changes there without updating `main`, commits, temporary commits, or stashes. Both reduced modes perform only read operations against GitHub and leave issues open.
@@ -85,6 +86,13 @@ Fetch only after the mode-specific preflight is complete and its verification re
 2. For every issue, collect at least its number, title, body, state, creation and update timestamps, labels, assignees, milestone, URL, comments, linked closing pull requests, and explicit issue relationships available from GitHub.
 3. Preserve the raw issue text and relationship data. The root agent must not summarize it before handing it to the triage subagent.
 4. Record the inventory timestamp and issue-number snapshot. Newly opened issues are listed in the final report as outside this run.
+
+### Label-filtered mode
+
+1. Query open issues matching the requested label with pagination until no page remains (excluding pull requests), then verify exact literal, case-sensitive membership of that label on each returned issue and filter out every issue that does not carry that exact label.
+2. If no open issues carry that exact label, report that zero matching open issues were found and stop without making changes.
+3. For every matching issue, collect the same complete fields as in all-open mode, preserve the raw issue text and relationship data without summarizing, and record the inventory timestamp and matching issue-number snapshot.
+4. Fetch raw metadata for non-matching issues only when explicitly referenced as blockers or dependencies of a matching issue, keeping all issues without that exact label strictly filtered out of grouping, implementation, and closure scope. All remaining triage, ordering, grouping, execution, verification, delivery, cleanup, and reporting rules apply unchanged to the filtered inventory.
 
 ### Single-issue mode
 

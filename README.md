@@ -36,6 +36,18 @@ $address-github-issues 123
 Only one explicit issue argument is supported. In single-issue mode, referenced
 dependencies are inspected but remain outside implementation scope.
 
+To fetch and process only open issues carrying a specific exact label (via
+`--label` or in the invocation prompt):
+
+```text
+$address-github-issues --label bug
+```
+
+Issues that do not carry that exact, case-sensitive label are filtered out
+(referenced non-matching issues may still be inspected for blocker context), and
+all remaining processing rules apply unchanged. A label filter cannot be
+combined with an explicit issue target or multiple labels.
+
 Issues labeled `human`, `needs-human`, `requires-human`, or otherwise indicating
 that human involvement is required are skipped and reported. Issues that depend
 on an unresolved skipped issue remain blocked.
@@ -43,7 +55,7 @@ on an unresolved skipped issue remain blocked.
 ### Delivery modes
 
 ```text
-$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]
+$address-github-issues [issue-number-or-url | --label <label>] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]
 ```
 
 | Mode | Workspace | Commits | Remote delivery |
@@ -60,9 +72,10 @@ $address-github-issues --no-commit
 $address-github-issues 123 --no-pr
 ```
 
-Flags may precede or follow the issue argument. `--no-commit` implies `--no-pr`
-and takes precedence if both are supplied. Flags without an issue select all
-open issues; unknown flags and multiple issue targets are rejected.
+Flags may precede or follow the target argument. `--no-commit` implies `--no-pr`
+and takes precedence if both are supplied. Flags without an issue or label
+select all open issues; unknown flags, multiple labels, multiple issue targets,
+or combining a label filter with an explicit issue target are rejected.
 
 `--simple` starts every step directly in the current agent's existing session:
 preflight, inventory, triage, investigation, implementation, verification, and
