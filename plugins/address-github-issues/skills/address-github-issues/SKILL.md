@@ -9,14 +9,14 @@ By default, the invoking root agent delegates verification discovery and issue t
 
 ## Invocation modes
 
-`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model family]`
+`$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]`
 
 - No issue argument: process a snapshot of every open issue in the current repository, including when only flags are supplied.
 - One issue number, `#number`, or issue URL: process only that issue. Inspect referenced dependencies to determine whether the target is blocked, but do not implement another issue or expand scope.
 - Flags may precede or follow the issue argument. Reject unknown flags or more than one issue argument before accessing GitHub.
 - `--simple` uses the separate [simple workflow](references/simple.md): all steps run directly in the current session, with no subagents. It works with every delivery mode and still requires dedicated worktrees.
 - `--effort` overrides the reasoning effort of every subagent in the standard workflow. Accept one of `max`, `xhigh`, `high`, `medium`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. The requested effort is exact: use a compatible model under the model-selection policy or report a blocker; do not silently lower it. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
-- `--model` overrides model-family selection for every subagent in the standard workflow, including preflight and shared triage. Accept exactly one family alias from the table below; reject missing, invalid, or repeated values before accessing GitHub. It takes precedence over issue labels and automatic fallbacks, and combines with every delivery mode and `--effort`. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
+- `--model` overrides model-family tier selection for every subagent in the standard workflow, including preflight and shared triage. Accept one of `top`, `high`, `middle`, or `low`; reject missing, invalid, or repeated values before accessing GitHub. It takes precedence over issue labels and automatic fallbacks, and combines with every delivery mode and `--effort`. In `--simple`, validate its syntax but report that it does not reconfigure the current session.
 
 During triage, skip any issue whose labels indicate that human involvement is required, including `human`, `needs-human`, `requires-human`, and labels with the same meaning. This applies in both invocation modes. Report the issue and label; do not group, implement, or close it. Treat an unresolved skipped prerequisite as a blocker for dependent issues.
 
@@ -32,29 +32,32 @@ All work, including preflight, implementation, fixes, and validation, must happe
 
 ## Subagent model selection
 
-This section applies only to the standard workflow. `--simple` retains the current session's model and reasoning effort without model selection or delegation. At the start of each executable effort, before spawning its coordinator, the root resolves one model family in this precedence order:
+This section applies only to the standard workflow. `--simple` retains the current session's model and reasoning effort without model selection or delegation. At the start of each executable effort, before spawning its coordinator, the root resolves one model-family tier in this precedence order:
 
-1. If `--model` is supplied, use its exact family from the table below, regardless of issue labels. If unavailable or incompatible, report a blocker without falling back to another family.
-2. Otherwise, if any member issue in that individual or approved grouped effort has a label whose name is exactly `astra`, use `gpt-6-astra`. If unavailable or incompatible, report a blocker without falling back to another family.
-3. Otherwise, use the first available compatible family in this order: `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`. Report a model-availability blocker only after exhausting this chain.
+1. If `--model` is supplied, use that exact model-family tier (`top`, `high`, `middle`, or `low`), regardless of issue labels. If unavailable or incompatible, report a blocker without falling back to another tier.
+2. Otherwise, if any member issue in that individual or approved grouped effort has a label whose name is exactly `top`, use the `top` tier. If unavailable or incompatible, report a blocker without falling back to another tier.
+3. Otherwise, use the first available compatible model-family tier in this order: `high` → `middle` → `low`. Report a model-availability blocker only after exhausting this chain.
 
-| `--model` alias | Model family |
-|---|---|
-| `astra` | `gpt-6-astra` |
-| `sol-6.1` | `gpt-6.1-sol` |
-| `terra-6.1` | `gpt-6.1-terra` |
-| `luna-6.1` | `gpt-6.1-luna` |
-| `sol-5.6` | `gpt-5.6-sol` |
-| `terra-5.6` | `gpt-5.6-terra` |
-| `luna-5.6` | `gpt-5.6-luna` |
+Compare label names literally and case-sensitively; do not trim, normalize, or pattern-match them. `Top`, `top `, and provider-specific model names do not match. Use this effort's labels in the inventory snapshot; labels on other efforts or out-of-scope dependencies never affect its choice. The `top` tier is eligible only through an exact `top` label or explicit `--model top`, never as an automatic fallback.
 
-Compare label names literally and case-sensitively; do not trim, normalize, or pattern-match them. `Astra`, `astra `, and `gpt-6-astra` do not match. Use this effort's labels in the inventory snapshot; labels on other efforts or out-of-scope dependencies never affect its choice. Astra is eligible only through an exact `astra` label or explicit `--model astra`, never as an automatic fallback.
+Repository-wide preflight and shared triage resolve `<shared-model>` from `--model` when supplied, otherwise from the `high` → `middle` → `low` fallback chain. Issue labels apply only when resolving each effort's tier, not to the entire run.
 
-Repository-wide preflight and shared triage resolve `<shared-model>` from `--model` when supplied, otherwise from the non-Astra fallback chain. Issue labels apply only when resolving each effort's family, not to the entire run.
+Resolve availability from the harness catalog or explicit model/effort errors by mapping each candidate tier to the active AI provider's corresponding model family in [Provider model tiers](#provider-model-tiers). Before starting an effort, choose a tier whose mapped family supports all required role configurations and any requested fast mode, then resolve `<chosen-model>` to the latest available compatible model identifier within that family. Every coordinator and descendant must retain that tier and model family through research, debugging, planning, implementation, verification, tooling recovery, and CI fixes. Pass the resolved tier, model family, actual model, selection source (override, labels, or default), label evidence, and any fallback reasons in every handoff; resolve afresh for the next effort. After selection, subflows must not independently switch tiers or families; report a blocker if the resolved family becomes unusable.
 
-Resolve availability from the harness catalog or explicit model/effort errors. Before starting an effort, choose a family supporting all its required role configurations and any requested fast mode, then resolve `<chosen-model>` to an available model identifier within it. Every coordinator and descendant must retain that family through research, debugging, planning, implementation, verification, tooling recovery, and CI fixes. Pass the resolved family, actual model, selection source (override, labels, or default), label evidence, and any fallback reasons in every handoff; resolve afresh for the next effort. After selection, subflows must not independently switch families; report a blocker if the resolved family becomes unusable.
+In the standard workflow, use `xhigh` reasoning for analytical and verification roles and `medium` for coordinators, implementation, and corrective edits. Supply the actual model identifier and reasoning effort as separate spawn arguments. `--effort` replaces every role's reasoning effort with the exact requested value without changing the selected tier, model family, or role boundaries.
 
-In the standard workflow, use `xhigh` reasoning for analytical and verification roles and `medium` for coordinators, implementation, and corrective edits. Supply the actual model identifier and reasoning effort as separate spawn arguments. `--effort` replaces every role's reasoning effort with the exact requested value without changing the selected family or role boundaries.
+## Provider model tiers
+
+Match model-family tiers to the active AI provider's latest available model family rather than pinning specific numeric versions:
+
+| Tier | OpenAI | Google Gemini |
+|---|---|---|
+| `top` | GPT Astra (latest) | Gemini Carbon (latest) |
+| `high` | GPT Sol (latest) | Gemini Argon (latest) |
+| `middle` | GPT Terra (latest) | Gemini Flash (latest) |
+| `low` | GPT Luna (latest) | Gemini Flash-Lite (latest) |
+
+Always resolve the latest compatible version of the mapped family available in the harness catalog. When running on another AI provider, map `top`, `high`, `middle`, and `low` to that provider's equivalent latest model families before applying [Subagent model selection](#subagent-model-selection).
 
 ## Mandatory delegation
 
@@ -64,14 +67,14 @@ Treat every subagent as receiving none of its parent's conversation or working c
 
 During the preflight in [references/workflow.md](references/workflow.md), the root agent spawns a dedicated subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) in the dedicated preflight worktree to determine the necessary artifact verification steps from the target repository's instructions, tooling, CI, and artifact types. It waits for that verification report before fetching the raw issue inventory, then spawns exactly one xhigh-reasoning triage subagent using the shared model with the complete raw inventory and verification report. It uses only the triage subagent's decision-complete report to select, group, order, and spawn effort coordinators; it must not pre-classify issues, make triage decisions, or fill gaps in either report.
 
-For every dependency-ready individual issue or deliberately approved grouped effort, the root agent first resolves its model family under the policy above, then spawns exactly one **fresh** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`). It passes the coordinator the resolved family, selection source and evidence, repository and dedicated preflight worktree paths, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the recorded starting state and local progress: the latest integrated `main` tip for `--no-pr`, or the dedicated run worktree and accumulated changes for `--no-commit`. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
+For every dependency-ready individual issue or deliberately approved grouped effort, the root agent first resolves its model-family tier and provider model family under the policy above, then spawns exactly one **fresh** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`). It passes the coordinator the resolved tier and model family, selection source and evidence, repository and dedicated preflight worktree paths, delivery mode, current raw issue data, applicable triage and verification reports, and prior effort reports. In reduced modes, also pass the recorded starting state and local progress: the latest integrated `main` tip for `--no-pr`, or the dedicated run worktree and accumulated changes for `--no-commit`. Provide this skill and [references/workflow.md](references/workflow.md), and require the coordinator to read both files completely before acting. The coordinator's context ends when that one effort is reported; it must never process a later effort.
 
 Each effort coordinator owns that effort from workspace selection through its report, but it is orchestration-only:
 
 - An xhigh-reasoning subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) performs all effort-specific verification discovery and refinement, dependency analysis, research, planning, root-cause analysis, and debugging.
 - A medium-reasoning subagent (`model=<chosen-model>`, `reasoning_effort=medium`) performs all implementation and fix edits in the selected worktree.
 - The coordinator must not independently make any technical triage or debugging judgment.
-- Apply the effort's resolved family to every role; the initial fallback decision and any within-family substitution preserve role boundaries and reasoning effort.
+- Apply the effort's resolved tier and model family to every role; the initial fallback decision and any within-family substitution preserve role boundaries and reasoning effort.
 
 In default and `--no-pr` modes, when the xhigh-reasoning triage subagent establishes that dependency-ready efforts are completely unrelated, cannot interfere with one another, and are completely safe to implement in parallel, the root agent **must** launch separate parallel coordinator flows, one fresh coordinator per effort. Each flow owns implementation, verification, and delivery, including merging in default mode. Follow the concurrency safeguards in [references/workflow.md](references/workflow.md#parallel-execution-rules); otherwise run efforts sequentially. A grouped effort is handled by one fresh coordinator, not one coordinator per member issue.
 
@@ -81,7 +84,7 @@ Parallel implementation must still produce linear `main` history. Serialize inte
 
 This section applies to the standard workflow's subagents. `--simple` uses the existing session and spawns none.
 
-If the invoking root agent requests **FAST MODE subagents**, every subagent in the run must use fast mode, recursively: preflight, triage, coordinators, research, debugging, planning, implementation, verification, and remediation. Every agent must propagate the requirement to its children and must never silently fall back to normal mode. Resolve a family supporting fast mode through the model-selection policy before starting; if none is eligible or the resolved family later becomes unusable, stop and report the affected stage or effort as blocked.
+If the invoking root agent requests **FAST MODE subagents**, every subagent in the run must use fast mode, recursively: preflight, triage, coordinators, research, debugging, planning, implementation, verification, and remediation. Every agent must propagate the requirement to its children and must never silently fall back to normal mode. Resolve a tier whose mapped model family supports fast mode through the model-selection policy before starting; if none is eligible or the resolved family later becomes unusable, stop and report the affected stage or effort as blocked.
 
 If any agent hits the harness's subagent thread limit, it must stop immediately, create the persistent handover artifact specified in [references/workflow.md](references/workflow.md), and request that the human restart the harness to clean up sessions. It must not continue locally, reuse an old delegate, substitute a model, or attempt further issue or GitHub work.
 

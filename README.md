@@ -43,7 +43,7 @@ on an unresolved skipped issue remain blocked.
 ### Delivery modes
 
 ```text
-$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model family]
+$address-github-issues [issue-number-or-url] [--no-pr] [--no-commit] [--simple] [--effort max|xhigh|high|medium|low] [--model top|high|middle|low]
 ```
 
 | Mode | Workspace | Commits | Remote delivery |
@@ -80,17 +80,28 @@ In the standard workflow, `--effort` sets the exact reasoning effort for every
 subagent. If no eligible model supports it, the run reports a blocker rather than
 silently lowering the effort. Invalid, missing, or repeated effort values are rejected.
 
-In the standard workflow, `--model` overrides the family for every subagent,
-including preflight and shared triage, and takes precedence over labels and
-automatic fallbacks.
-Accepted values are `astra`, `sol-6.1`, `terra-6.1`, `luna-6.1`, `sol-5.6`,
-`terra-5.6`, and `luna-5.6`. An unavailable or incompatible explicit family blocks
-the run rather than falling back. Invalid, missing, or repeated values are rejected
-before GitHub access. For example:
+In the standard workflow, `--model` overrides the model-family tier for every
+subagent, including preflight and shared triage, and takes precedence over
+labels and automatic fallbacks.
+Accepted values are `top`, `high`, `middle`, and `low`. An unavailable or
+incompatible explicit tier blocks the run rather than falling back. Invalid,
+missing, or repeated values are rejected before GitHub access. For example:
 
 ```text
-$address-github-issues 123 --model sol-6.1 --effort high --no-pr
+$address-github-issues 123 --model high --effort high --no-pr
 ```
+
+### Provider model tiers
+
+Model-family tiers map to the active AI provider's latest available model family
+rather than specific numeric model versions:
+
+| Tier | OpenAI | Google Gemini |
+|---|---|---|
+| `top` | GPT Astra (latest) | Gemini Carbon (latest) |
+| `high` | GPT Sol (latest) | Gemini Argon (latest) |
+| `middle` | GPT Terra (latest) | Gemini Flash (latest) |
+| `low` | GPT Luna (latest) | Gemini Flash-Lite (latest) |
 
 Every mode uses dedicated worktrees for preflight, implementation, fixes, and
 validation, preserving pre-existing edits in the invoking checkout. `--no-pr`
@@ -118,21 +129,23 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
 - Git and authenticated GitHub read access (for example, GitHub CLI via
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
-- For the standard workflow, a Codex harness supporting the required subagent
+- For the standard workflow, an agent harness supporting the required subagent
   reasoning efforts. It uses `xhigh` for analytical and verification roles and
   `medium` for coordinators, implementation, and corrective edits unless `--effort`
   overrides them.
-  At the start of each effort, honor `--model` if supplied. Otherwise select
-  `gpt-6-astra` if any member issue has an exact, case-sensitive `astra` label,
-  with no fallback to another family. Without either, resolve the first available
-  family supporting the required roles and execution mode in this order:
-  `gpt-6.1-sol` → `gpt-6.1-terra` → `gpt-5.6-sol` → `gpt-5.6-terra` → `gpt-5.5`.
-  Every role and subflow in that effort retains its selected family, including
-  tooling recovery and CI fixes. Preflight and shared triage honor `--model` or
-  use the default fallback chain. Delegates propagate the resolved family and
-  report its selection source, evidence, fallback reasons, models, and reasoning
-  efforts. Astra is never an automatic fallback. Simple mode uses the current
-  session without delegation or model selection.
+  At the start of each effort, honor `--model` if supplied. Otherwise select the
+  `top` tier if any member issue has an exact, case-sensitive `top` label, with
+  no fallback to another tier. Without either, resolve the first available
+  compatible tier supporting the required roles and execution mode in this
+  order: `high` → `middle` → `low`, mapped to the active provider's latest
+  corresponding model family.
+  Every role and subflow in that effort retains its selected tier and model
+  family, including tooling recovery and CI fixes. Preflight and shared triage
+  honor `--model` or use the default `high` → `middle` → `low` fallback chain.
+  Delegates propagate the resolved tier and family and report selection source,
+  evidence, fallback reasons, models, and reasoning efforts. The `top` tier is
+  never an automatic fallback. Simple mode uses the current session without
+  delegation or model selection.
 - A target repository with an `origin` remote and local `main` as the worktree
   base in every mode. Default mode requires a clean local `main` that can be
   safely fast-forwarded to `origin/main`, with required checks and branch
@@ -155,6 +168,6 @@ and [workflow](plugins/address-github-issues/skills/address-github-issues/refere
 define issue processing, standard-workflow delegation, and bounded retries.
 
 The standard workflow requires a harness supporting subagent delegation and
-the resolved model family. `--effort` changes subagent reasoning effort
-independently of the family selected for an effort. Simple mode runs in the
-current session without these delegation requirements.
+the resolved model-family tier. `--effort` changes subagent reasoning effort
+independently of the tier and model family selected for an effort. Simple mode
+runs in the current session without these delegation requirements.
