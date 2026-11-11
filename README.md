@@ -76,16 +76,25 @@ when those flags are supplied. For example:
 $address-github-issues 123 --simple --no-pr
 ```
 
-In the standard workflow, `--effort` sets the exact reasoning effort for every
-subagent. If no eligible model supports it, the run reports a blocker rather than
-silently lowering the effort. Invalid, missing, or repeated effort values are rejected.
+In the standard workflow, `--effort` overrides the reasoning effort for every
+subagent (`low` < `medium` < `high` < `xhigh` < `max`). When the resolved
+provider-tier entry defines an explicit reasoning-effort cap, any `--effort`
+value (as well as any role default) above that cap is clamped down to the capped
+value. After applying any tier policy cap, an explicitly user-supplied `--effort`
+must be supported by an eligible model; if unsupported, or if `--effort` is
+missing, invalid, or repeated, the run fails rather than silently changing the
+user's request.
 
 In the standard workflow, `--model` overrides the model-family tier for every
 subagent, including preflight and shared triage, and takes precedence over
 labels and automatic fallbacks.
-Accepted values are `top`, `high`, `middle`, and `low`. An unavailable or
-incompatible explicit tier blocks the run rather than falling back. Invalid,
-missing, or repeated values are rejected before GitHub access. For example:
+Accepted values are `top`, `high`, `middle`, and `low`. Because `--model` is
+explicitly specified by the user, an unavailable or incompatible explicit tier
+blocks the run rather than falling back, and invalid, missing, or repeated
+values are rejected before GitHub access. By contrast, when tiers, model
+families, or reasoning efforts are resolved automatically and do not match
+harness reality, the workflow logs a mild warning and continues with
+available-range clamping and best-effort fallbacks. For example:
 
 ```text
 $address-github-issues 123 --model high --effort high --no-pr
@@ -99,9 +108,23 @@ rather than specific numeric model versions:
 | Tier | OpenAI | Google Gemini |
 |---|---|---|
 | `top` | GPT Astra (latest) | Gemini Carbon (latest) |
-| `high` | GPT Sol (latest) | Gemini Argon (latest) |
+| `high` | GPT Sol (latest) | Gemini Carbon (latest; reasoning effort capped at `medium`) |
 | `middle` | GPT Terra (latest) | Gemini Flash (latest) |
 | `low` | GPT Luna (latest) | Gemini Flash-Lite (latest) |
+
+When a provider-tier entry specifies a reasoning-effort cap (such as Google
+Gemini `high` capped at `medium`), every subagent's target reasoning
+effort—whether from its role default or `--effort`—is clamped to
+`min(target_effort, cap)` on `low` < `medium` < `high` < `xhigh` < `max`. When
+no explicit cap is defined for the selected entry, no policy cap applies.
+
+If the resolved model family does not support an automatically resolved
+reasoning effort, the effort is automatically clamped into that model's
+available range (for example, `xhigh` clamps down to `high` when a model only
+supports `high`–`medium`–`low`, and `low` clamps up to `medium` when a model
+only supports `medium`), logging a mild warning and continuing. The workflow
+fails on invalid or unsupported model/effort settings only when explicitly
+specified by the user.
 
 Every mode uses dedicated worktrees for preflight, implementation, fixes, and
 validation, preserving pre-existing edits in the invoking checkout. `--no-pr`
@@ -129,22 +152,26 @@ tooling repairs are forbidden; unresolved tooling after that round blocks delive
 - Git and authenticated GitHub read access (for example, GitHub CLI via
   `gh auth login`). Default mode additionally requires permission to push
   branches, create pull requests, rebase-merge them, and close issues.
-- For the standard workflow, an agent harness supporting the required subagent
-  reasoning efforts. It uses `xhigh` for analytical and verification roles and
-  `medium` for coordinators, implementation, and corrective edits unless `--effort`
-  overrides them.
-  At the start of each effort, honor `--model` if supplied. Otherwise select the
-  `top` tier if any member issue has an exact, case-sensitive `top` label, with
-  no fallback to another tier. Without either, resolve the first available
-  compatible tier supporting the required roles and execution mode in this
-  order: `high` → `middle` → `low`, mapped to the active provider's latest
-  corresponding model family.
-  Every role and subflow in that effort retains its selected tier and model
-  family, including tooling recovery and CI fixes. Preflight and shared triage
-  honor `--model` or use the default `high` → `middle` → `low` fallback chain.
-  Delegates propagate the resolved tier and family and report selection source,
-  evidence, fallback reasons, models, and reasoning efforts. The `top` tier is
-  never an automatic fallback. Simple mode uses the current session without
+- For the standard workflow, an agent harness supporting subagent delegation.
+  Roles default to `xhigh` for analytical and verification work and `medium` for
+  coordinators, implementation, and corrective edits unless `--effort` overrides
+  them, applying any explicit provider-tier cap first and automatically clamping
+  non-user-specified efforts into the resolved model's available effort range
+  with a mild warning when needed.
+  At the start of each effort, honor `--model` if supplied (blocking if
+  unavailable). Otherwise prefer the `top` tier if any member issue has an
+  exact, case-sensitive `top` label, or resolve through `high` → `middle` →
+  `low`, mapped to the active provider's latest corresponding model family—using
+  best-effort fallbacks with a mild warning if automatically resolved tiers or
+  families do not match harness reality, and failing only on invalid or
+  unsupported user-specified values.
+  Every role and subflow in that effort retains its selected tier, model
+  family, and effort rules, including tooling recovery and CI fixes. Preflight
+  and shared triage honor `--model` or use the `high` → `middle` → `low`
+  fallback chain. Delegates propagate the resolved tier, family, caps, and
+  warnings and report selection source, evidence, fallback/clamping reasons,
+  models, and effective reasoning efforts. The `top` tier is never an automatic
+  upward or default fallback. Simple mode uses the current session without
   delegation or model selection.
 - A target repository with an `origin` remote and local `main` as the worktree
   base in every mode. Default mode requires a clean local `main` that can be
