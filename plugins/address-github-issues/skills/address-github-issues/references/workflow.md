@@ -246,7 +246,8 @@ In either reduced mode, an attempted effort that cannot complete after the permi
 2. In the effort's worktree, rebase its new commits onto that current local `main` tip. Concurrent progress is expected: resolve rebase conflicts rather than treating divergence alone as a blocker. An xhigh-reasoning debugging subagent diagnoses the correct resolution and a medium-reasoning corrective-edit subagent applies it, both using `<chosen-model>`; in the simple workflow, the current agent performs both roles directly in its existing session. Preserve both the effort's intent and concurrent changes.
 3. Rerun applicable verification from the latest report on the rebased result, including any conflict resolution. Follow section 5.6 for failures and bounded correction cycles; never integrate failing or unfinished work. Keep fixes in this effort's commit. Require `git rev-list --merges <integration-base>..HEAD` to return no commits.
 4. Recheck that local `main` still equals the integration base and its checkout is clean. If another writer advanced it despite the lock, repeat the rebase and verification against the new tip. In the worktree holding `main`, run `git merge --ff-only <effort-branch>`. Never fall back to a merge commit, reset, or force-update of `main`.
-5. Verify local `main` equals the validated effort tip and the newly integrated range contains no merge commits. Record the resulting commit IDs and `main` tip, then release the lock and integration turn. A failed fast-forward requires another base read, rebase, and verification; it is not permission to overwrite concurrent work. Proceed to section 5.9 only after successful integration, or report the preserved worktree and blocker.
+5. Verify local `main` equals the validated effort tip and the newly integrated range contains no merge commits. Record the resulting commit IDs and `main` tip, then release the lock and integration turn. A failed fast-forward requires another base read, rebase, and verification; it is not permission to overwrite concurrent work. If integration cannot complete, preserve the effort's worktree and report the blocker.
+6. Once local `main` integration is confirmed, unregister this effort's workflow-created worktree from Git and fully delete its directory and all contents on disk (including untracked and ignored artifacts). Never delete a pre-existing user worktree or an unintegrated failed effort's worktree. Proceed to section 5.9 only after confirming integration and worktree deletion on disk.
 
 #### Pull-request delivery (default)
 
@@ -280,7 +281,7 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 - issue numbers and titles;
 - whether issues were grouped and the triage justification;
 - resolved model-family tier, provider model family, and any reasoning-effort cap or available-range clamping applied, selection source (override, labels, or default), evidence, mild warnings, and fallback reasons, plus research, triage, debugging, planning, implementation, and verification delegates used, with actual models, effective reasoning efforts, and any within-family substitutions;
-- branch and worktree path;
+- branch and worktree path (and confirmation of full worktree deletion on disk after `main` integration in `--no-pr` mode);
 - changed behavior or documentation;
 - the latest verification report, including refinements, and results of automated checks, manual reviews, and required CI checks;
 - substantive correction cycles used out of five, with tooling failures and their single grouped recovery round reported separately and excluded from that count;
@@ -291,6 +292,8 @@ The coordinator reports after each effort reaches its delivery boundary, or when
 The root may start parallel-safe efforts without waiting for peer reports in default and `--no-pr` modes. Before starting dependent or sequential efforts, wait for the necessary delivery reports. Serialize all updates to local `main` across runs. With `--no-commit`, continue in the dedicated run worktree with earlier work intact unless an attempted effort failed and stopped the run.
 
 ## 6. Root agent: finish the run
+
+In `--no-pr` mode, after executable efforts finish integrating into local `main` and before returning the final report, unregister and fully delete on disk any remaining worktrees created as part of the workflow (such as the dedicated preflight worktree and any temporary `main`-integration worktree created solely for the run), preserving pre-existing user checkouts and any unintegrated worktree from a failed effort.
 
 After all executable efforts are reported, the root agent returns one final ordered report containing:
 
@@ -303,6 +306,11 @@ After all executable efforts are reported, the root agent returns one final orde
 - issues opened after the snapshot, without processing them;
 - validation results, omitted delivery steps, and unfinished changes;
 - which efforts ran in parallel, the triage evidence establishing their independence, and which ran sequentially;
-- confirmation of dedicated worktree isolation in every mode; serialized integration across concurrent agents and runs, with rebase-merged PRs or local `--ff-only` integration and no new merge commits on `main`; no remote writes in reduced modes and no `main` update with `--no-commit`.
+- confirmation of dedicated worktree isolation in every mode; serialized integration across concurrent agents and runs, with rebase-merged PRs or local `--ff-only` integration and no new merge commits on `main`; full on-disk deletion of workflow-created worktrees after `main` integration in `--no-pr` mode; no remote writes in reduced modes and no `main` update with `--no-commit`.
 
-Distinguish completion of the requested local delivery from resolution of a GitHub issue: uncommitted and locally fast-forwarded outcomes leave GitHub issues open. Never claim a blocked, unchecked, or unintegrated `--no-pr` effort succeeded. Do not delete worktrees or branches unless the user or repository workflow explicitly requests cleanup.
+Distinguish completion of the requested local delivery from resolution of a GitHub issue: uncommitted and locally fast-forwarded outcomes leave GitHub issues open. Never claim a blocked, unchecked, or unintegrated `--no-pr` effort succeeded.
+
+### Worktree cleanup
+
+- `--no-pr`: once changes are merged (fast-forwarded) into local `main`, any worktrees created as part of the workflow must be unregistered from Git and **fully deleted along with all contents on disk** (including untracked and ignored files)—delete each integrated effort's worktree after confirming its fast-forward into `main` in section 5.7, and delete any remaining workflow-created run worktrees (such as the dedicated preflight worktree and any temporary `main`-integration worktree created by the run) when finishing in section 6. Never delete the invoking checkout, any pre-existing user worktree, or an unintegrated worktree from a failed or blocked effort.
+- Default (PR) mode and `--no-commit`: nothing changes—do not delete worktrees or their contents on disk unless the user or repository workflow explicitly requests cleanup. In PR mode, worktree contents cannot be deleted before pull requests are merged and external PR lifecycle events cannot be reacted to after handoff; in `--no-commit` mode, uncommitted changes must remain in the dedicated run worktree until the user commits them manually. Do not delete branches in any mode unless explicitly requested.

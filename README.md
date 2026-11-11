@@ -133,6 +133,9 @@ Before delivery, agents serialize integration across concurrent agents and runs,
 rebase onto the latest local `main`, resolve conflicts, rerun applicable checks,
 and fast-forward `main` with `--ff-only`. No merge commits are created on `main`.
 Dependent efforts start from `main` after their prerequisites are integrated.
+Once changes are merged into local `main` in `--no-pr` mode, any worktrees
+created as part of the workflow are unregistered and fully deleted along with
+all contents on disk; default PR mode and `--no-commit` retain their worktrees.
 
 `--no-commit` keeps efforts sequential in one dedicated run worktree, where later
 issues can use earlier validated changes. It leaves those changes uncommitted
