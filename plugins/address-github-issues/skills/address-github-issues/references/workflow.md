@@ -83,15 +83,15 @@ Fetch only after the mode-specific preflight is complete and its verification re
 ### All-open mode
 
 1. Enumerate every open issue with pagination until no page remains. Do not rely on GitHub CLI's default limit, and exclude pull requests returned by the Issues API.
-2. For every issue, collect at least its number, title, body, state, creation and update timestamps, labels, assignees, milestone, URL, comments, linked closing pull requests, and explicit issue relationships available from GitHub.
-3. Preserve the raw issue text and relationship data. The root agent must not summarize it before handing it to the triage subagent.
+2. For every issue, collect at least its number, title, body, state, creation and update timestamps, labels, assignees, milestone, URL, comments, any linked or embedded images in the issue body or comments, linked closing pull requests, and explicit issue relationships available from GitHub.
+3. Preserve the raw issue text, fetched image files, and relationship data. The root agent must not summarize or interpret them before handing them to the triage subagent.
 4. Record the inventory timestamp and issue-number snapshot. Newly opened issues are listed in the final report as outside this run.
 
 ### Label-filtered mode
 
 1. Query open issues matching the requested label with pagination until no page remains (excluding pull requests), then verify exact literal, case-sensitive membership of that label on each returned issue and filter out every issue that does not carry that exact label.
 2. If no open issues carry that exact label, report that zero matching open issues were found and stop without making changes.
-3. For every matching issue, collect the same complete fields as in all-open mode, preserve the raw issue text and relationship data without summarizing, and record the inventory timestamp and matching issue-number snapshot.
+3. For every matching issue, collect the same complete fields as in all-open mode, preserve the raw issue text, fetched image files, and relationship data without summarizing, and record the inventory timestamp and matching issue-number snapshot.
 4. Fetch raw metadata for non-matching issues only when explicitly referenced as blockers or dependencies of a matching issue, keeping all issues without that exact label strictly filtered out of grouping, implementation, and closure scope. All remaining triage, ordering, grouping, execution, verification, delivery, cleanup, and reporting rules apply unchanged to the filtered inventory.
 
 ### Single-issue mode
@@ -100,11 +100,15 @@ Fetch only after the mode-specific preflight is complete and its verification re
 2. If it is not open, report its state and stop without making changes.
 3. Fetch raw metadata for issues explicitly referenced as blockers or dependencies, but keep those issues out of implementation scope.
 
+In every mode, any images linked or embedded within GitHub issues or comments (including Markdown `![...](...)` syntax, HTML `<img>` tags, and direct image or attachment URLs such as GitHub `user-attachments` and `githubusercontent` assets) must also be fetched and analyzed. Download them (using authenticated GitHub requests when needed) into untracked temporary files outside tracked repository paths so worktrees stay clean, and record each file's local path alongside its source issue or comment and original URL in the raw inventory (recording any fetch error if an image URL is unreachable). Keep these local image files available until the run completes and pass their paths in subagent handoffs so analytical, implementation, and verification delegates inspect them directly rather than relying on URL text or coordinator summaries.
+
 ## 4. Root agent: mandatory xhigh-reasoning triage
 
-Spawn one shared triage subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the raw inventory, delivery mode, preflight verification report, repository instructions, and dedicated preflight worktree path. Shared triage honors `--model` when supplied; otherwise it uses the default fallback chain. Apply issue-label selection separately at the start of each resulting effort when there is no override. In reduced modes, include the recorded starting state and local progress. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
+Spawn one shared triage subagent (`model=<shared-model>`, `reasoning_effort=xhigh`) with the raw inventory (including local paths to all fetched issue and comment images), delivery mode, preflight verification report, repository instructions, and dedicated preflight worktree path. Shared triage honors `--model` when supplied; otherwise it uses the default fallback chain. Apply issue-label selection separately at the start of each resulting effort when there is no override. In reduced modes, include the recorded starting state and local progress. The root agent must not pre-classify the issues, suggest an ordering, or make any triage decision.
 
 The triage subagent applies the human-involvement label rule in [Invocation modes](../SKILL.md#invocation-modes) to each in-scope issue using the inventory labels, including semantically equivalent labels. Record skipped issues and the relevant labels; exclude them from groups and executable efforts. A dependent issue remains blocked if a skipped prerequisite is unresolved. If the sole selected issue is skipped, report it without implementation or GitHub writes. Skipped issues do not prevent unrelated eligible efforts from proceeding.
+
+The triage subagent must inspect and analyze every fetched image from in-scope issue bodies and comments (and any referenced blocker issues when needed for blocker context) alongside the text—extracting visual evidence such as UI defects, screenshots, error output, diagrams, or reproduction steps, and accounting for any unreachable image that leaves scope or reproduction ambiguous.
 
 The triage report must be detailed and decision-complete. It must contain:
 
@@ -159,7 +163,7 @@ Use the triage ordering to launch parallel-safe efforts deterministically. An ef
 
 ## 5. Root agent: process each effort
 
-At the start of each effort selected, grouped, and ordered by the triage report, the root resolves `<chosen-model>` through [Subagent model selection](../SKILL.md#subagent-model-selection): explicit `--model` first, then that effort's labels, otherwise the default fallback chain. It then spawns a **new** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`, capped/clamped as applicable) with the resolved tier, model family, any reasoning-effort cap, selection source and evidence, any mild warnings or fallback/clamping reasons, repository and dedicated preflight worktree paths, delivery mode, raw inventory, triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. Every descendant in sections 5.1–5.9 inherits that tier, model family, and effort-capping/clamping rules without reselecting them. In reduced modes, also pass the recorded starting state and local progress: the latest integrated `main` tip for `--no-pr`, or the dedicated run worktree and accumulated changes for `--no-commit`. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator or its tier or family choice for another effort and does not make technical decisions between efforts.
+At the start of each effort selected, grouped, and ordered by the triage report, the root resolves `<chosen-model>` through [Subagent model selection](../SKILL.md#subagent-model-selection): explicit `--model` first, then that effort's labels, otherwise the default fallback chain. It then spawns a **new** coordinator (`model=<chosen-model>`, `reasoning_effort=medium`, capped/clamped as applicable) with the resolved tier, model family, any reasoning-effort cap, selection source and evidence, any mild warnings or fallback/clamping reasons, repository and dedicated preflight worktree paths, delivery mode, raw inventory (including local paths to fetched issue and comment images), triage report, latest verification report, prior effort reports, repository instructions, this workflow, and the effort definition. Every descendant in sections 5.1–5.9 inherits that tier, model family, and effort-capping/clamping rules without reselecting them. In reduced modes, also pass the recorded starting state and local progress: the latest integrated `main` tip for `--no-pr`, or the dedicated run worktree and accumulated changes for `--no-commit`. The fresh coordinator follows the applicable steps below and returns an effort report at the selected delivery boundary. The root agent does not reuse that coordinator or its tier or family choice for another effort and does not make technical decisions between efforts.
 
 The inventory and combined triage are the sole eligibility decision for the run; coordinators do not refresh issue or dependency state before starting. This deliberately accepts a TOCTOU risk: an issue may be closed, edited, or newly blocked after triage, so work can begin from stale GitHub state. Final validation, current-`main` rebasing, and issue-state reporting still apply, but they do not eliminate that risk.
 
@@ -186,7 +190,7 @@ Research may cover existing solutions and libraries, algorithms, protocols, stan
 
 ### 5.3 Diagnose the issue
 
-For bugs, regressions, failures, performance problems, or unclear behavior, spawn a debugging subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) before planning. Require it to inspect the real code path, reproduce when feasible, trace callers and data flow, compare working patterns, and provide an evidence-backed root-cause report.
+For bugs, regressions, failures, performance problems, or unclear behavior, spawn a debugging subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) before planning. Require it to inspect the real code path, analyze any fetched images from the issue or comments, reproduce when feasible, trace callers and data flow, compare working patterns, and provide an evidence-backed root-cause report.
 
 For a pure feature or documentation issue, the triage report may explicitly state that separate debugging is unnecessary. The coordinator cannot make that determination.
 
@@ -196,7 +200,7 @@ No fix may be planned from symptoms alone. If root cause remains unknown, report
 
 Spawn a fresh planning subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`). Give it:
 
-- the complete current issue or grouped-issue data;
+- the complete current issue or grouped-issue data, including local paths to any fetched issue and comment images;
 - the triage report;
 - the latest verification report;
 - every research and debugging report;
@@ -209,7 +213,7 @@ Before implementation, exercise any effort-specific tooling not covered by prefl
 
 ### 5.5 Implement in the worktree
 
-Spawn an implementation subagent (`model=<chosen-model>`, `reasoning_effort=medium`) in the selected worktree. Give it the delivery mode, approved plan, and all supporting reports. Require it to:
+Spawn an implementation subagent (`model=<chosen-model>`, `reasoning_effort=medium`) in the selected worktree. Give it the delivery mode, approved plan, and all supporting reports (including fetched issue and comment image paths when visual context applies). Require it to:
 
 - read and obey repository and relevant skill instructions;
 - edit only within the approved scope;
@@ -224,7 +228,7 @@ The coordinator must not edit implementation files. If implementation reveals a 
 ### 5.6 Review and validate
 
 1. Collect the diff and implementation report. With `--no-commit`, distinguish this effort's delta from prior efforts and assess regressions against the accumulated run state. With `--no-pr`, review the effort against its `main` base and validate again after the final rebase.
-2. Give them and the latest verification report to a verification subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) to verify the final implementation against each issue's acceptance criteria, grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
+2. Give them, any fetched issue and comment images for the effort, and the latest verification report to a verification subagent (`model=<chosen-model>`, `reasoning_effort=xhigh`) to verify the final implementation against each issue's acceptance criteria (including visual requirements or behaviors shown in linked images), grouped-issue completeness, regressions, and missing tests, and perform any prescribed technical manual reviews.
 3. Consolidate all findings into a grouped correction request for a corrective-edit subagent (`model=<chosen-model>`, `reasoning_effort=medium`), following the correction rules below.
 4. Execute the applicable local verification steps from the latest report and implementation plan, including all focused tests and repository-required local checks. Record results against the stated success criteria; unavailable or unperformed required local checks remain blockers. In default mode, run CI-only checks through section 5.8; their results gate merging. In reduced modes, report PR-only checks as omitted by the mode, never as passed.
 5. Confirm only intended changes were introduced by this effort, with earlier work and pre-existing edits preserved, and run `git diff --check`.

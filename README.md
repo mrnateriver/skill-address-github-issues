@@ -52,6 +52,9 @@ Issues labeled `human`, `needs-human`, `requires-human`, or otherwise indicating
 that human involvement is required are skipped and reported. Issues that depend
 on an unresolved skipped issue remain blocked.
 
+Any images linked or embedded in issue bodies or comments are also fetched and
+analyzed during triage, investigation, planning, and verification.
+
 ### Delivery modes
 
 ```text
