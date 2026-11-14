@@ -62,8 +62,8 @@ Match model-family tiers to the active AI provider's latest available model fami
 |---|---|---|
 | `top` | GPT Astra (latest) | Gemini Carbon (latest) |
 | `high` | GPT Sol (latest) | Gemini Carbon (latest; reasoning effort capped at `medium`) |
-| `middle` | GPT Terra (latest) | Gemini Argon (latest) |
-| `low` | GPT Luna (latest) | Gemini Hydrogen (latest) |
+| `middle` | GPT Terra (latest) | Gemini Hydrogen (latest; reasoning effort capped at `xhigh`) |
+| `low` | GPT Luna (latest) | Gemini Hydrogen (latest; reasoning effort capped at `medium`) |
 
 Always resolve the latest compatible version of the mapped family available in the harness catalog. When running on another AI provider, map `top`, `high`, `middle`, and `low` to that provider's equivalent latest model families before applying [Subagent model selection](#subagent-model-selection).
 

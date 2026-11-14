@@ -125,8 +125,8 @@ rather than specific numeric model versions:
 |---|---|---|
 | `top` | GPT Astra (latest) | Gemini Carbon (latest) |
 | `high` | GPT Sol (latest) | Gemini Carbon (latest; reasoning effort capped at `medium`) |
-| `middle` | GPT Terra (latest) | Gemini Argon (latest) |
-| `low` | GPT Luna (latest) | Gemini Hydrogen (latest) |
+| `middle` | GPT Terra (latest) | Gemini Hydrogen (latest; reasoning effort capped at `xhigh`) |
+| `low` | GPT Luna (latest) | Gemini Hydrogen (latest; reasoning effort capped at `medium`) |
 
 When a provider-tier entry specifies a reasoning-effort cap (such as Google
 Gemini `high` capped at `medium`), every subagent's target reasoning
